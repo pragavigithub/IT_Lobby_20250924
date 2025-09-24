@@ -481,21 +481,80 @@ Serial Number Transfer {{ transfer.transfer_number }}
 
 {% block scripts %}
 <script>
+    // Global modal management
+    let activeModals = new Map();
+    
     function showAddItemModal() {
+        // Clean up any existing modal backdrops first
+        document.querySelectorAll('.modal-backdrop').forEach(backdrop => backdrop.remove());
+        document.body.classList.remove('modal-open');
+        document.body.style.paddingRight = '';
+        
         // Reset form and validation state
-        document.getElementById('addItemForm').reset();
-        document.getElementById('validationResults').style.display = 'none';
-        document.getElementById('addItemBtn').style.display = 'none';
-        document.getElementById('item_name_status').textContent = '';
-        document.getElementById('serialCountStatus').className = 'badge bg-secondary';
-        document.getElementById('serialCountStatus').textContent = 'Enter quantity first';
-        document.getElementById('duplicateWarning').style.display = 'none';
-        document.getElementById('quantityMismatchWarning').style.display = 'none';
+        const form = document.getElementById('addItemForm');
+        if (form) form.reset();
+        
+        const validationResults = document.getElementById('validationResults');
+        if (validationResults) validationResults.style.display = 'none';
+        
+        const addItemBtn = document.getElementById('addItemBtn');
+        if (addItemBtn) addItemBtn.style.display = 'none';
+        
+        const itemNameStatus = document.getElementById('item_name_status');
+        if (itemNameStatus) itemNameStatus.textContent = '';
+        
+        const serialCountStatus = document.getElementById('serialCountStatus');
+        if (serialCountStatus) {
+            serialCountStatus.className = 'badge bg-secondary';
+            serialCountStatus.textContent = 'Enter quantity first';
+        }
+        
+        const duplicateWarning = document.getElementById('duplicateWarning');
+        if (duplicateWarning) duplicateWarning.style.display = 'none';
+        
+        const quantityMismatchWarning = document.getElementById('quantityMismatchWarning');
+        if (quantityMismatchWarning) quantityMismatchWarning.style.display = 'none';
 
         // Reset validation state
-        validatedSerials = null;
+        validatedSerials = [];
 
-        const modal = new bootstrap.Modal(document.getElementById('addItemModal'));
+        // Get or create modal instance
+        const modalElement = document.getElementById('addItemModal');
+        if (!modalElement) {
+            console.error('Add Item Modal element not found');
+            return;
+        }
+        
+        // Dispose existing modal if any
+        if (activeModals.has('addItemModal')) {
+            activeModals.get('addItemModal').dispose();
+            activeModals.delete('addItemModal');
+        }
+        
+        // Create new modal instance
+        const modal = new bootstrap.Modal(modalElement, {
+            backdrop: 'static',
+            keyboard: true
+        });
+        
+        // Store modal instance
+        activeModals.set('addItemModal', modal);
+        
+        // Add cleanup event listener
+        modalElement.addEventListener('hidden.bs.modal', function onHidden() {
+            modalElement.removeEventListener('hidden.bs.modal', onHidden);
+            if (activeModals.has('addItemModal')) {
+                activeModals.get('addItemModal').dispose();
+                activeModals.delete('addItemModal');
+            }
+            // Final cleanup
+            setTimeout(() => {
+                document.querySelectorAll('.modal-backdrop').forEach(backdrop => backdrop.remove());
+                document.body.classList.remove('modal-open');
+                document.body.style.paddingRight = '';
+            }, 100);
+        });
+        
         modal.show();
     }
 
@@ -550,15 +609,20 @@ Serial Number Transfer {{ transfer.transfer_number }}
                 }
             } else {
                 alert(`❌ Validation Error: ${data.error}`);
-                validatedSerials = null;
+                validatedSerials = [];
                 addBtn.style.display = 'none';
             }
         })
         .catch(error => {
             console.error('Validation Error:', error);
             alert('❌ Error during validation');
-            validatedSerials = null;
+            validatedSerials = [];
             addBtn.style.display = 'none';
+            
+            // Ensure cleanup on error
+            if (typeof UIStateManager !== 'undefined') {
+                UIStateManager.cleanupAll();
+            }
         })
         .finally(() => {
             validateBtn.disabled = false;
@@ -795,9 +859,58 @@ Serial Number Transfer {{ transfer.transfer_number }}
     let allSerialNumbers = [];
     let currentItemId = null;
     let currentTransferStatus = null;
+    
+    // Initialize page when DOM is loaded
+    document.addEventListener('DOMContentLoaded', function() {
+        console.log('Serial Transfer Detail page loaded');
+        
+        // Clean up any stuck modal states on page load
+        cleanupModalStates();
+        
+        // Initialize Feather icons if available
+        if (typeof feather !== 'undefined') {
+            feather.replace();
+        }
+        
+        // Add global error handlers for AJAX failures
+        window.addEventListener('unhandledrejection', function(event) {
+            console.error('Unhandled promise rejection:', event.reason);
+            cleanupModalStates();
+        });
+    });
+    
+    // Utility function to clean up modal states
+    function cleanupModalStates() {
+        // Remove any stuck modal backdrops
+        document.querySelectorAll('.modal-backdrop').forEach(backdrop => backdrop.remove());
+        document.body.classList.remove('modal-open');
+        document.body.style.paddingRight = '';
+        
+        // Clear active modals
+        if (typeof activeModals !== 'undefined') {
+            activeModals.forEach((modal, key) => {
+                try {
+                    modal.dispose();
+                } catch (e) {
+                    console.warn(`Error disposing modal ${key}:`, e);
+                }
+            });
+            activeModals.clear();
+        }
+    }
 
     function showSerialNumbers(itemId, itemCode) {
-        const modal = new bootstrap.Modal(document.getElementById('serialNumbersModal'));
+        // Clean up any existing modal backdrops first
+        document.querySelectorAll('.modal-backdrop').forEach(backdrop => backdrop.remove());
+        document.body.classList.remove('modal-open');
+        document.body.style.paddingRight = '';
+        
+        const modalElement = document.getElementById('serialNumbersModal');
+        if (!modalElement) {
+            console.error('Serial Numbers Modal element not found');
+            return;
+        }
+        
         const content = document.getElementById('serialNumbersContent');
         const filterControls = document.getElementById('serialFilterControls');
 
@@ -805,10 +918,45 @@ Serial Number Transfer {{ transfer.transfer_number }}
         currentItemId = itemId;
 
         // Update modal title
-        document.querySelector('#serialNumbersModal .modal-title').textContent = `Serial Numbers for ${itemCode}`;
+        const titleElement = document.querySelector('#serialNumbersModal .modal-title');
+        if (titleElement) {
+            titleElement.textContent = `Serial Numbers for ${itemCode}`;
+        }
+
+        // Dispose existing modal if any
+        if (activeModals.has('serialNumbersModal')) {
+            activeModals.get('serialNumbersModal').dispose();
+            activeModals.delete('serialNumbersModal');
+        }
+        
+        // Create new modal instance
+        const modal = new bootstrap.Modal(modalElement, {
+            backdrop: 'static',
+            keyboard: true
+        });
+        
+        // Store modal instance
+        activeModals.set('serialNumbersModal', modal);
+        
+        // Add cleanup event listener
+        modalElement.addEventListener('hidden.bs.modal', function onHidden() {
+            modalElement.removeEventListener('hidden.bs.modal', onHidden);
+            if (activeModals.has('serialNumbersModal')) {
+                activeModals.get('serialNumbersModal').dispose();
+                activeModals.delete('serialNumbersModal');
+            }
+            // Final cleanup
+            setTimeout(() => {
+                document.querySelectorAll('.modal-backdrop').forEach(backdrop => backdrop.remove());
+                document.body.classList.remove('modal-open');
+                document.body.style.paddingRight = '';
+            }, 100);
+        });
 
         // Load serial numbers via AJAX
-        content.innerHTML = '<div class="text-center"><div class="spinner-border" role="status"></div><p>Loading...</p></div>';
+        if (content) {
+            content.innerHTML = '<div class="text-center"><div class="spinner-border" role="status"></div><p>Loading...</p></div>';
+        }
 
         fetch(`/inventory_transfer/serial/items/${itemId}/serials`)
             .then(response => response.json())
@@ -819,26 +967,35 @@ Serial Number Transfer {{ transfer.transfer_number }}
                     currentTransferStatus = data.transfer_status;
 
                     // Show filter controls
-                    filterControls.style.display = 'block';
+                    if (filterControls) filterControls.style.display = 'block';
 
                     // Reset filters
-                    document.getElementById('validationFilter').value = 'all';
-                    document.getElementById('selectAllSerials').checked = false;
+                    const validationFilter = document.getElementById('validationFilter');
+                    if (validationFilter) validationFilter.value = 'all';
+                    
+                    const selectAllSerials = document.getElementById('selectAllSerials');
+                    if (selectAllSerials) selectAllSerials.checked = false;
 
                     // Render the table
                     renderSerialsTable();
 
                     // Re-initialize Feather icons for the new content
-                    feather.replace();
+                    if (typeof feather !== 'undefined') {
+                        feather.replace();
+                    }
                 } else {
-                    content.innerHTML = `<div class="alert alert-danger">Error loading serial numbers: ${data.error}</div>`;
-                    filterControls.style.display = 'none';
+                    if (content) {
+                        content.innerHTML = `<div class="alert alert-danger">Error loading serial numbers: ${data.error}</div>`;
+                    }
+                    if (filterControls) filterControls.style.display = 'none';
                 }
             })
             .catch(error => {
                 console.error('Error:', error);
-                content.innerHTML = '<div class="alert alert-danger">Error loading serial numbers</div>';
-                filterControls.style.display = 'none';
+                if (content) {
+                    content.innerHTML = '<div class="alert alert-danger">Error loading serial numbers</div>';
+                }
+                if (filterControls) filterControls.style.display = 'none';
             });
 
         modal.show();

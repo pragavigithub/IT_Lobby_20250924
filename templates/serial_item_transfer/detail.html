@@ -447,13 +447,6 @@ let validatedSerials = [];
 let requiredQuantity = 1;
 let currentStep = 2;
 
-$(document).ready(function() {
-    // Load items on page load
-    loadItems();
-    
-    // Initialize step display
-    updateStepProgress();
-});
 
 function loadItems() {
     const warehouseCode = '{{ transfer.from_warehouse }}';
@@ -567,10 +560,13 @@ function updateValidatedSerialsList() {
 }
 
 function removeValidatedSerial(index) {
-    validatedSerials.splice(index, 1);
-    updateValidatedSerialsList();
-    updateSerialProgress();
-    updatePopulateButton();
+    if (confirm('Are you sure you want to remove this serial number?')) {
+        validatedSerials.splice(index, 1);
+        updateValidatedSerialsList();
+        updateSerialProgress();
+        updatePopulateButton();
+        showAlert('Serial number removed', 'success');
+    }
 }
 
 function updateSerialProgress() {
@@ -620,41 +616,64 @@ const UIStateManager = {
     
     cleanupAll: function() {
         this.loadingStates.forEach(state => {
-            if (state.element) {
-                state.element.prop('disabled', false).html(state.originalText);
+            if (state.element && state.element.length > 0) {
+                try {
+                    state.element.prop('disabled', state.originalDisabled || false).html(state.originalText || '');
+                } catch (e) {
+                    console.warn('Error restoring button state:', e);
+                }
             }
         });
         this.loadingStates.clear();
-        
-        // Clean up any remaining modal backdrops
-        $('.modal-backdrop').remove();
-        $('body').removeClass('modal-open').css('padding-right', '');
     }
 };
 
-// Global error handlers for cleanup
+// Improved document ready with proper initialization
 $(document).ready(function() {
-    // Global AJAX error handler
-    $(document).ajaxError(function(event, xhr, settings, error) {
-        UIStateManager.cleanupAll();
-        console.error('Global AJAX Error:', error, 'URL:', settings.url);
-    });
+    console.log('Serial Transfer Detail page loaded');
     
-    // Global AJAX complete handler
-    $(document).ajaxStop(function() {
-        // Additional cleanup if needed
+    // Initialize page state
+    initializePage();
+    
+    // Clean modal backdrop cleanup - single handler only
+    $(document).on('hidden.bs.modal', '.modal', function() {
+        // Small delay to let Bootstrap finish its cleanup first
         setTimeout(function() {
             $('.modal-backdrop').remove();
-            $('body').removeClass('modal-open');
-        }, 100);
+            $('body').removeClass('modal-open').css('padding-right', '');
+        }, 150);
     });
     
-    // Modal cleanup handler
-    $(document).on('hidden.bs.modal', function() {
-        $('.modal-backdrop').remove();
-        $('body').removeClass('modal-open').css('padding-right', '');
-    });
+    // Load items on page load to ensure button functionality
+    if ($('#itemSelect').length > 0) {
+        loadItems();
+    }
 });
+
+// Page initialization function
+function initializePage() {
+    // Reset any stuck modal states
+    $('.modal-backdrop').remove();
+    $('body').removeClass('modal-open').css('padding-right', '');
+    
+    // Initialize global variables
+    if (typeof selectedItem === 'undefined') {
+        window.selectedItem = null;
+        window.validatedSerials = [];
+        window.requiredQuantity = 1;
+        window.currentStep = 2;
+    }
+    
+    // Initialize step progress display
+    if (typeof updateStepProgress === 'function') {
+        updateStepProgress();
+    }
+    
+    // Ensure Feather icons are updated
+    if (typeof feather !== 'undefined') {
+        feather.replace();
+    }
+}
 
 // populateLineItems function - improved with proper state management and cleanup
 function populateLineItems() {
@@ -1219,44 +1238,32 @@ function submitTransfer() {
 }
 
 function showAlert(message, type) {
-    // Create or get alert container
-    let alertContainer = $('#alertContainer');
-    if (alertContainer.length === 0) {
-        alertContainer = $('<div id="alertContainer" style="position: fixed; top: 20px; right: 20px; z-index: 9999; max-width: 400px;"></div>');
-        $('body').append(alertContainer);
-    }
+    // Simpler alert implementation to avoid modal conflicts
+    const alertClass = type === 'error' ? 'alert-danger' : 
+                      type === 'warning' ? 'alert-warning' : 
+                      type === 'success' ? 'alert-success' : 'alert-info';
     
-    // Map alert types to Bootstrap classes
-    const alertClasses = {
-        'success': 'alert-success',
-        'error': 'alert-danger',
-        'warning': 'alert-warning',
-        'info': 'alert-info'
-    };
-    
-    const alertClass = alertClasses[type] || 'alert-info';
-    
-    // Create alert element
-    const alertId = 'alert-' + Date.now();
+    // Create alert element safely
+    const alertId = 'alert-' + Date.now() + Math.random().toString(36).substr(2, 9);
     const alertElement = $(`
-        <div id="${alertId}" class="alert ${alertClass} alert-dismissible fade show" role="alert">
+        <div id="${alertId}" class="alert ${alertClass} alert-dismissible fade show" role="alert" style="position: fixed; top: 20px; right: 20px; z-index: 1050; min-width: 300px; max-width: 500px;">
             <strong>${type.charAt(0).toUpperCase() + type.slice(1)}:</strong> ${message}
             <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
         </div>
     `);
     
-    // Add to container
-    alertContainer.append(alertElement);
+    // Add to body directly
+    $('body').append(alertElement);
     
-    // Auto-remove after 5 seconds (except for errors which stay longer)
+    // Auto-remove after timeout
     const timeout = type === 'error' ? 8000 : 5000;
     setTimeout(function() {
-        $(`#${alertId}`).fadeOut(function() {
+        $(`#${alertId}`).fadeOut(500, function() {
             $(this).remove();
         });
     }, timeout);
     
-    // Also log to console for debugging
+    // Log to console for debugging
     console.log(`${type.toUpperCase()}: ${message}`);
 }
 
