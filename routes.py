@@ -3780,6 +3780,61 @@ def change_password():
     return render_template('change_password.html')
 
 
+@app.route('/profile')
+@login_required
+def profile():
+    """View user's own profile"""
+    return render_template('profile.html', user=current_user)
+
+
+@app.route('/profile/edit', methods=['GET', 'POST'])
+@login_required
+def edit_profile():
+    """Edit user's own profile"""
+    if request.method == 'POST':
+        # Get form data
+        first_name = request.form.get('first_name', '').strip()
+        last_name = request.form.get('last_name', '').strip()
+        email = request.form.get('email', '').strip()
+        
+        # Validation
+        if not first_name:
+            flash('First name is required.', 'error')
+            return render_template('edit_profile.html', user=current_user)
+            
+        if not last_name:
+            flash('Last name is required.', 'error')
+            return render_template('edit_profile.html', user=current_user)
+            
+        if not email:
+            flash('Email is required.', 'error')
+            return render_template('edit_profile.html', user=current_user)
+        
+        # Check if email is already taken by another user
+        existing_user = User.query.filter(User.email == email, User.id != current_user.id).first()
+        if existing_user:
+            flash('This email is already registered to another user.', 'error')
+            return render_template('edit_profile.html', user=current_user)
+        
+        # Update user profile
+        current_user.first_name = first_name
+        current_user.last_name = last_name
+        current_user.email = email
+        current_user.updated_at = datetime.utcnow()
+        
+        try:
+            db.session.commit()
+            flash('Profile updated successfully!', 'success')
+            return redirect(url_for('profile'))
+        except Exception as e:
+            db.session.rollback()
+            logging.error(f"Error updating profile: {e}")
+            flash('Error updating profile. Please try again.', 'error')
+            return render_template('edit_profile.html', user=current_user)
+    
+    return render_template('edit_profile.html', user=current_user)
+
+
 @app.route('/delete_user/<int:user_id>', methods=['POST'])
 @login_required
 def delete_user(user_id):

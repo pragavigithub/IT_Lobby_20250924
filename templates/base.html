@@ -189,12 +189,18 @@
                         <i data-feather="user"></i> {{ current_user.first_name }} {{ current_user.last_name }}
                     </a>
                     <ul class="dropdown-menu">
-                        <!--                        <li><a class="dropdown-item" href="#">Profile</a></li>-->
-                        <!--                        <li><a class="dropdown-item" href="#">Settings</a></li>-->
+                        <li><a class="dropdown-item" href="{{ url_for('profile') }}">
+                            <i data-feather="user" class="me-1" style="width: 16px; height: 16px;"></i>Profile
+                        </a></li>
+                        <li><a class="dropdown-item" href="{{ url_for('change_password') }}">
+                            <i data-feather="key" class="me-1" style="width: 16px; height: 16px;"></i>Change Password
+                        </a></li>
                         <li>
                             <hr class="dropdown-divider">
                         </li>
-                        <li><a class="dropdown-item" href="{{ url_for('logout') }}">Logout</a></li>
+                        <li><a class="dropdown-item" href="{{ url_for('logout') }}">
+                            <i data-feather="log-out" class="me-1" style="width: 16px; height: 16px;"></i>Logout
+                        </a></li>
                     </ul>
                 </li>
             </ul>
