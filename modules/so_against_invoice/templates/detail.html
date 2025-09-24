@@ -155,7 +155,14 @@
                     <!-- SO Details (if validated) -->
                     {% if document.status in ['validated', 'posted'] and document.items %}
                     <div class="mb-4">
-                        <h6>Step 2: Sales Order Line Items</h6>
+                        <div class="d-flex justify-content-between align-items-center mb-3">
+                            <h6 class="mb-0">Step 2: Sales Order Line Items</h6>
+                            {% if document.status != 'posted' and document.so_doc_entry %}
+                            <button id="syncSODataBtn" class="btn btn-outline-info btn-sm">
+                                <i class="fas fa-sync-alt"></i> Sync Data from SAP B1
+                            </button>
+                            {% endif %}
+                        </div>
                         <div class="table-responsive">
                             <table class="table table-striped table-bordered">
                                 <thead class="table-primary">
@@ -897,6 +904,74 @@ document.addEventListener('DOMContentLoaded', function() {
             alert(`Error posting invoice: ${error.message}`);
             this.disabled = false;
             this.innerHTML = '<i class="fas fa-paper-plane"></i> Post Invoice to SAP B1';
+        });
+    });
+    
+    // Data Sync functionality
+    document.getElementById('syncSODataBtn')?.addEventListener('click', function() {
+        if (!confirm('This will sync the latest Sales Order data from SAP B1. Any unsaved changes may be overwritten. Continue?')) {
+            return;
+        }
+        
+        const syncBtn = this;
+        const originalText = syncBtn.innerHTML;
+        
+        // Disable button and show loading state
+        syncBtn.disabled = true;
+        syncBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Syncing...';
+        
+        fetch('/so-against-invoice/api/sync-so-data', {
+            method: 'POST',
+            headers: { 
+                'Content-Type': 'application/json'
+            },
+            credentials: 'same-origin',
+            body: JSON.stringify({ doc_id: docId })
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                // Show success message with details
+                let message = data.message;
+                if (data.changes) {
+                    const { lines_added, lines_updated, lines_removed } = data.changes;
+                    const totalChanges = lines_added + lines_updated + lines_removed;
+                    
+                    if (totalChanges > 0) {
+                        message += `\n\nChanges made:`;
+                        if (lines_added > 0) message += `\n• ${lines_added} lines added`;
+                        if (lines_updated > 0) message += `\n• ${lines_updated} lines updated`;
+                        if (lines_removed > 0) message += `\n• ${lines_removed} lines removed`;
+                        message += `\n\nTotal lines: ${data.total_lines}`;
+                        
+                        // Reload page to show updated data
+                        alert(message);
+                        window.location.reload();
+                    } else {
+                        alert(message + '\n\nNo changes were needed.');
+                    }
+                } else {
+                    alert(message);
+                }
+                
+                // Re-enable button
+                syncBtn.disabled = false;
+                syncBtn.innerHTML = originalText;
+            } else {
+                // Show error message
+                alert(`Sync failed: ${data.error}`);
+                
+                // Re-enable button
+                syncBtn.disabled = false;
+                syncBtn.innerHTML = originalText;
+            }
+        })
+        .catch(error => {
+            alert(`Sync error: ${error.message}`);
+            
+            // Re-enable button
+            syncBtn.disabled = false;
+            syncBtn.innerHTML = originalText;
         });
     });
 });

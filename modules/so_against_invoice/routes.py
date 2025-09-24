@@ -1402,3 +1402,223 @@ def post_invoice_to_sap():
             'success': False,
             'error': str(e)
         }), 500
+
+
+# Data Sync API for updating SO details from SAP B1
+@so_invoice_bp.route('/api/sync-so-data', methods=['POST'])
+@login_required
+def sync_so_data():
+    """Sync Sales Order data from SAP B1 to update document with latest changes"""
+    if not current_user.has_permission('so_against_invoice'):
+        return jsonify({
+            'success': False,
+            'error': 'Access denied - SO Against Invoice permissions required'
+        }), 403
+    
+    try:
+        # Validate CSRF token for JSON requests
+        if not validate_json_csrf():
+            return jsonify({
+                'success': False,
+                'error': 'CSRF validation failed'
+            }), 403
+        
+        data = request.get_json()
+        doc_id = data.get('doc_id')
+        
+        if not doc_id:
+            return jsonify({
+                'success': False,
+                'error': 'Document ID is required'
+            }), 400
+        
+        # Get the document
+        document = SOInvoiceDocument.query.get_or_404(doc_id)
+        
+        # Check permissions
+        if current_user.role not in ['admin', 'manager'] and document.user_id != current_user.id:
+            return jsonify({
+                'success': False,
+                'error': 'Access denied - You can only sync your own documents'
+            }), 403
+        
+        # Check that document is not already posted
+        if document.status == 'posted':
+            return jsonify({
+                'success': False,
+                'error': 'Cannot sync data for already posted documents'
+            }), 400
+        
+        # Check that SO is assigned
+        if not document.so_doc_entry:
+            return jsonify({
+                'success': False,
+                'error': 'No Sales Order assigned to this document'
+            }), 400
+        
+        sap = SAPIntegration()
+        
+        # Try to fetch latest SO details from SAP B1
+        if sap.ensure_logged_in():
+            try:
+                url = f"{sap.base_url}/b1s/v1/Orders?$filter=DocEntry eq {document.so_doc_entry}"
+                response = sap.session.get(url, timeout=10)
+                
+                if response.status_code == 200:
+                    data = response.json()
+                    orders = data.get('value', [])
+                    
+                    if orders:
+                        order = orders[0]
+                        
+                        # Check if SO is still open
+                        if order.get("DocumentStatus") != "bost_Open":
+                            return jsonify({
+                                'success': False,
+                                'error': f"Sales Order {document.so_number} is already closed and cannot be synced"
+                            }), 400
+                        
+                        # Update document header information
+                        document.card_code = order.get('CardCode', document.card_code)
+                        document.card_name = order.get('CardName', document.card_name)
+                        document.customer_address = order.get('Address', document.customer_address)
+                        
+                        # Get open lines only
+                        open_lines = [
+                            line for line in order.get("DocumentLines", [])
+                            if line.get("LineStatus") == "bost_Open"
+                        ]
+                        
+                        # Track changes
+                        changes_made = {
+                            'lines_added': 0,
+                            'lines_updated': 0,
+                            'lines_removed': 0
+                        }
+                        
+                        # Get existing line numbers from database
+                        existing_items = {item.line_num: item for item in document.items}
+                        current_line_nums = set(existing_items.keys())
+                        new_line_nums = set(line.get('LineNum') for line in open_lines)
+                        
+                        # Add or update lines
+                        for line in open_lines:
+                            line_num = line.get('LineNum')
+                            item_code = line.get('ItemCode')
+                            description = line.get('Dscription', '')
+                            quantity = line.get('Quantity', 0)
+                            warehouse_code = line.get('WarehouseCode', '')
+                            
+                            if line_num in existing_items:
+                                # Update existing item
+                                existing_item = existing_items[line_num]
+                                original_qty = existing_item.so_quantity
+                                
+                                existing_item.item_code = item_code
+                                existing_item.item_description = description
+                                existing_item.so_quantity = quantity
+                                existing_item.warehouse_code = warehouse_code
+                                existing_item.updated_at = datetime.utcnow()
+                                
+                                if original_qty != quantity:
+                                    changes_made['lines_updated'] += 1
+                                    logging.info(f"Updated line {line_num}: quantity changed from {original_qty} to {quantity}")
+                            else:
+                                # Add new item
+                                new_item = SOInvoiceItem(
+                                    so_invoice_id=document.id,
+                                    line_num=line_num,
+                                    item_code=item_code,
+                                    item_description=description,
+                                    so_quantity=quantity,
+                                    warehouse_code=warehouse_code,
+                                    validation_status='pending'
+                                )
+                                db.session.add(new_item)
+                                changes_made['lines_added'] += 1
+                                logging.info(f"Added new line {line_num}: {item_code} - {quantity}")
+                        
+                        # Remove lines that are no longer open
+                        removed_lines = current_line_nums - new_line_nums
+                        for line_num in removed_lines:
+                            item_to_remove = existing_items[line_num]
+                            # Only remove if not validated yet
+                            if item_to_remove.validation_status == 'pending':
+                                db.session.delete(item_to_remove)
+                                changes_made['lines_removed'] += 1
+                                logging.info(f"Removed line {line_num}: {item_to_remove.item_code}")
+                        
+                        # Update document timestamp
+                        document.updated_at = datetime.utcnow()
+                        document.validation_notes = f"Data synced from SAP B1 at {datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')}"
+                        
+                        db.session.commit()
+                        
+                        # Prepare response summary
+                        total_changes = sum(changes_made.values())
+                        if total_changes > 0:
+                            change_summary = []
+                            if changes_made['lines_added']:
+                                change_summary.append(f"{changes_made['lines_added']} lines added")
+                            if changes_made['lines_updated']:
+                                change_summary.append(f"{changes_made['lines_updated']} lines updated")
+                            if changes_made['lines_removed']:
+                                change_summary.append(f"{changes_made['lines_removed']} lines removed")
+                            
+                            message = f"Data sync completed: {', '.join(change_summary)}"
+                        else:
+                            message = "Data sync completed: No changes detected"
+                        
+                        logging.info(f"SO data sync successful for document {document.document_number}: {message}")
+                        
+                        return jsonify({
+                            'success': True,
+                            'message': message,
+                            'changes': changes_made,
+                            'total_lines': len(open_lines)
+                        })
+                        
+                    else:
+                        return jsonify({
+                            'success': False,
+                            'error': f'Sales Order DocEntry {document.so_doc_entry} not found in SAP B1'
+                        }), 404
+                        
+                else:
+                    logging.error(f"Error fetching SO details from SAP: {response.status_code} - {response.text}")
+                    return jsonify({
+                        'success': False,
+                        'error': f'Failed to fetch SO details from SAP B1: HTTP {response.status_code}'
+                    }), 502
+                    
+            except Exception as e:
+                logging.error(f"Error syncing SO data from SAP: {str(e)}")
+                return jsonify({
+                    'success': False,
+                    'error': 'Failed to connect to SAP B1 for data sync'
+                }), 503
+        
+        # Strict production check - never allow mock sync in production
+        if is_production_environment():
+            return jsonify({
+                'success': False,
+                'error': 'SAP B1 service unavailable - cannot sync data in production without live connection'
+            }), 503
+        
+        # Development mode - return mock sync result
+        logging.warning(f"DEVELOPMENT MODE: Mock data sync for document {document.document_number}")
+        return jsonify({
+            'success': True,
+            'message': 'Development mode: Mock data sync completed (no real changes made)',
+            'changes': {'lines_added': 0, 'lines_updated': 0, 'lines_removed': 0},
+            'total_lines': len(document.items),
+            'development_mode': True
+        })
+    
+    except Exception as e:
+        db.session.rollback()
+        logging.error(f"Error in sync_so_data API: {str(e)}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
