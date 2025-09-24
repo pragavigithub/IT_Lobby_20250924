@@ -17,8 +17,8 @@ def check_and_fix_admin():
     host = os.environ.get('MYSQL_HOST', 'localhost')
     port = int(os.environ.get('MYSQL_PORT', '3306'))
     user = os.environ.get('MYSQL_USER', 'root')
-    password = os.environ.get('MYSQL_PASSWORD', '')
-    database = os.environ.get('MYSQL_DATABASE', 'wms_db')
+    password = os.environ.get('MYSQL_PASSWORD', 'root123')
+    database = os.environ.get('MYSQL_DATABASE', 'wms_new')
     
     try:
         print("🔧 Connecting to MySQL database...")
@@ -55,7 +55,7 @@ def check_and_fix_admin():
                     UPDATE users SET 
                         password_hash = %s,
                         role = 'admin',
-                        user_is_active = 1,
+                        active = 1,
                         first_name = 'Admin',
                         last_name = 'User',
                         branch_name = 'Head Office'
@@ -70,7 +70,7 @@ def check_and_fix_admin():
                 # Create new admin user
                 password_hash = generate_password_hash('admin123')
                 cursor.execute("""
-                    INSERT INTO users (username, email, password_hash, role, user_is_active, first_name, last_name, branch_name)
+                    INSERT INTO users (username, email, password_hash, role, active, first_name, last_name, branch_name)
                     VALUES ('admin', 'admin@wms.local', %s, 'admin', 1, 'Admin', 'User', 'Head Office')
                 """, (password_hash,))
                 
@@ -78,7 +78,7 @@ def check_and_fix_admin():
             
             # Show all users for verification
             print("\n📋 All users in database:")
-            cursor.execute("SELECT id, username, email, role, user_is_active FROM users")
+            cursor.execute("SELECT id, username, email, role, active FROM users")
             users = cursor.fetchall()
             
             for user_data in users:
