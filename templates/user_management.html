@@ -30,7 +30,7 @@
         <div class="card bg-success text-white">
             <div class="card-body text-center">
                 <i data-feather="user-check" class="mb-3" style="width: 48px; height: 48px;"></i>
-                <h3 id="activeUsers">{{ users|selectattr('is_active')|list|length }}</h3>
+                <h3 id="activeUsers">{{ users|selectattr('active')|list|length }}</h3>
                 <p>Active Users</p>
             </div>
         </div>
@@ -50,7 +50,7 @@
         <div class="card bg-info text-white">
             <div class="card-body text-center">
                 <i data-feather="user-x" class="mb-3" style="width: 48px; height: 48px;"></i>
-                <h3 id="inactiveUsers">{{ users|rejectattr('is_active')|list|length }}</h3>
+                <h3 id="inactiveUsers">{{ users|rejectattr('active')|list|length }}</h3>
                 <p>Inactive Users</p>
             </div>
         </div>
@@ -111,13 +111,19 @@
                             </td>
                             <!--                                <td>{{ user.branch_name or 'Not Assigned' }}</td>-->
                             <td>
-                                {% if user.is_active %}
+                                {% if user.active %}
                                 <span class="badge bg-success">Active</span>
                                 {% else %}
                                 <span class="badge bg-danger">Inactive</span>
                                 {% endif %}
                             </td>
-                            <td>{{ user.created_at.strftime('%Y-%m-%d') }}</td>
+                            <td>
+                                {% if user.created_at %}
+                                {{ user.created_at.strftime('%Y-%m-%d') }}
+                                {% else %}
+                                Not Available
+                                {% endif %}
+                            </td>
                             <td>
                                 <div class="btn-group" role="group">
                                     <button class="btn btn-sm btn-outline-primary" onclick="editUser({{ user.id }})"
@@ -128,7 +134,7 @@
                                             onclick="resetPassword({{ user.id }})" title="Reset Password">
                                         <i data-feather="key"></i>
                                     </button>
-                                    {% if user.is_active %}
+                                    {% if user.active %}
                                     <button class="btn btn-sm btn-outline-danger"
                                             onclick="deactivateUser({{ user.id }})" title="Deactivate User">
                                         <i data-feather="user-x"></i>
