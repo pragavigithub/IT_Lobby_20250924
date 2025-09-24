@@ -594,99 +594,170 @@ function updatePopulateButton() {
     $('#populateLineItemsBtn').prop('disabled', !canPopulate);
 }
 
-// populateLineItems function - consolidated version with better modal handling
+// UI State Manager for proper cleanup
+const UIStateManager = {
+    loadingStates: new Set(),
+    
+    showLoading: function(element, originalText) {
+        const $el = $(element);
+        const state = {
+            element: $el,
+            originalText: originalText || $el.html(),
+            originalDisabled: $el.prop('disabled')
+        };
+        
+        $el.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> Processing...');
+        this.loadingStates.add(state);
+        return state;
+    },
+    
+    hideLoading: function(state) {
+        if (state && state.element) {
+            state.element.prop('disabled', state.originalDisabled).html(state.originalText);
+            this.loadingStates.delete(state);
+        }
+    },
+    
+    cleanupAll: function() {
+        this.loadingStates.forEach(state => {
+            if (state.element) {
+                state.element.prop('disabled', false).html(state.originalText);
+            }
+        });
+        this.loadingStates.clear();
+        
+        // Clean up any remaining modal backdrops
+        $('.modal-backdrop').remove();
+        $('body').removeClass('modal-open').css('padding-right', '');
+    }
+};
+
+// Global error handlers for cleanup
+$(document).ready(function() {
+    // Global AJAX error handler
+    $(document).ajaxError(function(event, xhr, settings, error) {
+        UIStateManager.cleanupAll();
+        console.error('Global AJAX Error:', error, 'URL:', settings.url);
+    });
+    
+    // Global AJAX complete handler
+    $(document).ajaxStop(function() {
+        // Additional cleanup if needed
+        setTimeout(function() {
+            $('.modal-backdrop').remove();
+            $('body').removeClass('modal-open');
+        }, 100);
+    });
+    
+    // Modal cleanup handler
+    $(document).on('hidden.bs.modal', function() {
+        $('.modal-backdrop').remove();
+        $('body').removeClass('modal-open').css('padding-right', '');
+    });
+});
+
+// populateLineItems function - improved with proper state management and cleanup
 function populateLineItems() {
     if (!selectedItem) {
         showAlert('Please select an item first', 'error');
         return;
     }
     
-    // Disable the button to prevent multiple submissions
-    const populateBtn = $('#populateLineItemsBtn');
-    const originalText = populateBtn.html();
-    populateBtn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> Processing...');
+    // Validate expected_item_code is set
+    if (!selectedItem.itemCode) {
+        showAlert('Item code is required. Please select an item first.', 'error');
+        return;
+    }
     
-    // Handle serial managed items
-    if ($('#serialNumberSection').is(':visible')) {
-        if (validatedSerials.length < requiredQuantity) {
-            showAlert('Please validate all required serial numbers first', 'error');
-            populateBtn.prop('disabled', false).html(originalText);
-            return;
-        }
-        
-        // Create line items based on validated serials with better error handling
-        const ajaxPromises = validatedSerials.map(function(serial) {
-            return $.ajax({
-                url: '/serial-item-transfer/{{ transfer.id }}/add_serial_item',
+    // Show loading state with proper state management
+    const loadingState = UIStateManager.showLoading('#populateLineItemsBtn');
+    
+    try {
+        // Handle serial managed items
+        if ($('#serialNumberSection').is(':visible')) {
+            if (validatedSerials.length < requiredQuantity) {
+                showAlert('Please validate all required serial numbers first', 'error');
+                return;
+            }
+            
+            // Create line items based on validated serials with proper error handling
+            const ajaxPromises = validatedSerials.map(function(serial) {
+                return $.ajax({
+                    url: '/serial-item-transfer/{{ transfer.id }}/add_serial_item',
+                    method: 'POST',
+                    data: {
+                        serial_number: serial.serialNumber,
+                        expected_item_code: selectedItem.itemCode
+                    },
+                    timeout: 30000
+                }).catch(function(xhr) {
+                    console.error(`Failed to add serial ${serial.serialNumber}:`, xhr);
+                    return { success: false, error: xhr.responseText || 'Request failed' };
+                });
+            });
+            
+            Promise.allSettled(ajaxPromises)
+                .then(function(results) {
+                    const responses = results.map(r => r.status === 'fulfilled' ? r.value : { success: false });
+                    const successCount = responses.filter(r => r.success).length;
+                    
+                    if (successCount === validatedSerials.length) {
+                        showAlert(`Successfully added ${successCount} serial line items`, 'success');
+                        resetItemSelection();
+                        setTimeout(function() {
+                            window.location.reload();
+                        }, 1500);
+                    } else {
+                        showAlert(`Added ${successCount} of ${validatedSerials.length} items. ${validatedSerials.length - successCount} failed.`, 'warning');
+                        setTimeout(function() {
+                            window.location.reload();
+                        }, 2500);
+                    }
+                })
+                .catch(function(error) {
+                    console.error('Error in Promise.allSettled:', error);
+                    showAlert('Unexpected error adding line items', 'error');
+                })
+                .finally(function() {
+                    UIStateManager.hideLoading(loadingState);
+                });
+        } else {
+            // Handle non-serial items
+            $.ajax({
+                url: '/serial-item-transfer/{{ transfer.id }}/add_non_serial_item',
                 method: 'POST',
                 data: {
-                    serial_number: serial.serialNumber,
-                    expected_item_code: selectedItem.itemCode
+                    item_code: selectedItem.itemCode,
+                    item_description: selectedItem.itemName,
+                    quantity: requiredQuantity,
+                    unit_of_measure: 'EA'
                 },
-                timeout: 30000 // 30 second timeout
-            }).catch(function(xhr) {
-                console.error(`Failed to add serial ${serial.serialNumber}:`, xhr);
-                return { success: false, error: xhr.responseText || 'Request failed' };
-            });
-        });
-        
-        Promise.allSettled(ajaxPromises)
-            .then(function(results) {
-                const responses = results.map(r => r.status === 'fulfilled' ? r.value : { success: false });
-                const successCount = responses.filter(r => r.success).length;
-                
-                if (successCount === validatedSerials.length) {
-                    showAlert(`Successfully added ${successCount} serial line items`, 'success');
-                    // Reset form state and reload after delay
-                    resetItemSelection();
-                    setTimeout(function() {
-                        window.location.reload();
-                    }, 1500);
-                } else {
-                    showAlert(`Added ${successCount} of ${validatedSerials.length} items. ${validatedSerials.length - successCount} failed.`, 'warning');
-                    // Partial success - reload to show what was added
-                    setTimeout(function() {
-                        window.location.reload();
-                    }, 2500);
-                }
+                timeout: 30000
             })
-            .catch(function(error) {
-                console.error('Error in Promise.allSettled:', error);
-                showAlert('Unexpected error adding line items', 'error');
-                populateBtn.prop('disabled', false).html(originalText);
-            });
-    } else {
-        // Handle non-serial items
-        $.ajax({
-            url: '/serial-item-transfer/{{ transfer.id }}/add_non_serial_item',
-            method: 'POST',
-            data: {
-                item_code: selectedItem.itemCode,
-                item_description: selectedItem.itemName,
-                quantity: requiredQuantity,
-                unit_of_measure: 'EA'
-            },
-            timeout: 30000, // 30 second timeout
-            success: function(response) {
+            .done(function(response) {
                 if (response.success) {
                     showAlert(`Successfully added ${requiredQuantity} quantity of ${selectedItem.itemCode}`, 'success');
-                    // Reset form state and reload
                     resetItemSelection();
                     setTimeout(function() {
                         window.location.reload();
                     }, 1500);
                 } else {
                     showAlert(response.error || 'Error adding non-serial item', 'error');
-                    populateBtn.prop('disabled', false).html(originalText);
                 }
-            },
-            error: function(xhr, status, error) {
+            })
+            .fail(function(xhr, status, error) {
                 console.error('Error adding non-serial item:', error);
                 const errorMsg = xhr.responseJSON ? xhr.responseJSON.error : error;
                 showAlert('Error adding non-serial item: ' + errorMsg, 'error');
-                populateBtn.prop('disabled', false).html(originalText);
-            }
-        });
+            })
+            .always(function() {
+                UIStateManager.hideLoading(loadingState);
+            });
+        }
+    } catch (error) {
+        console.error('Exception in populateLineItems:', error);
+        showAlert('Unexpected error: ' + error.message, 'error');
+        UIStateManager.hideLoading(loadingState);
     }
 }
 
