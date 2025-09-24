@@ -13,6 +13,38 @@ from modules.invoice_creation.models import InvoiceDocument
 
 from sap_integration import SAPIntegration
 from sqlalchemy import or_
+import re
+
+
+def validate_password(password):
+    """
+    Validate password according to requirements:
+    - At least one capital letter
+    - At least one small letter  
+    - At least one number
+    - Between 6 and 25 characters
+    
+    Returns: (is_valid, error_message)
+    """
+    if not password:
+        return False, "Password is required"
+    
+    if len(password) < 6:
+        return False, "Password must be at least 6 characters long"
+    
+    if len(password) > 25:
+        return False, "Password must be no more than 25 characters long"
+    
+    if not re.search(r'[A-Z]', password):
+        return False, "Password must contain at least one capital letter"
+    
+    if not re.search(r'[a-z]', password):
+        return False, "Password must contain at least one small letter"
+    
+    if not re.search(r'[0-9]', password):
+        return False, "Password must contain at least one number"
+    
+    return True, "Password is valid"
 
 
 # BinScanningLog is now imported above
@@ -3657,6 +3689,12 @@ def create_user():
     default_branch_id = request.form.get('default_branch_id')
     must_change_password = 'must_change_password' in request.form
 
+    # Validate password
+    is_valid, password_error = validate_password(password)
+    if not is_valid:
+        flash(password_error, 'error')
+        return redirect(url_for('user_management'))
+
     # Check if user exists
     if User.query.filter_by(username=username).first():
         flash('Username already exists.', 'error')
@@ -3738,6 +3776,12 @@ def reset_password(user_id):
     user = User.query.get_or_404(user_id)
     new_password = request.form['new_password']
 
+    # Validate password
+    is_valid, password_error = validate_password(new_password)
+    if not is_valid:
+        flash(password_error, 'error')
+        return redirect(url_for('user_management'))
+
     user.password_hash = generate_password_hash(new_password)
     user.must_change_password = True  # Force user to change password on next login
     user.updated_at = datetime.utcnow()
@@ -3764,8 +3808,10 @@ def change_password():
             flash('New passwords do not match.', 'error')
             return render_template('change_password.html')
 
-        if len(new_password) < 6:
-            flash('Password must be at least 6 characters long.', 'error')
+        # Validate password
+        is_valid, password_error = validate_password(new_password)
+        if not is_valid:
+            flash(password_error, 'error')
             return render_template('change_password.html')
 
         current_user.password_hash = generate_password_hash(new_password)

@@ -4,7 +4,7 @@ Configures file-based logging with rotation
 """
 import os
 import logging
-from logging.handlers import RotatingFileHandler
+from logging.handlers import RotatingFileHandler, TimedRotatingFileHandler
 from datetime import datetime
 import logging
 import sys
@@ -50,27 +50,34 @@ def setup_logging(app):
         console_handler.setFormatter(formatter)
         handlers.append(console_handler)
     
-    # File handler with rotation
+    # File handler with timed rotation - daily log files with date in filename
     if LOG_TO_FILE:
+        # Use TimedRotatingFileHandler for daily rotation at midnight
         log_file = os.path.join(LOG_PATH, f'{LOG_FILE_PREFIX}.log')
-        file_handler = RotatingFileHandler(
-            log_file, 
-            maxBytes=LOG_MAX_SIZE, 
+        file_handler = TimedRotatingFileHandler(
+            log_file,
+            when='midnight',
+            interval=1,
             backupCount=LOG_BACKUP_COUNT,
             encoding='utf-8'
         )
+        # Set suffix to include date in filename
+        file_handler.suffix = '%Y-%m-%d'
         file_handler.setLevel(log_level)
         file_handler.setFormatter(formatter)
         handlers.append(file_handler)
         
-        # Error log file
+        # Error log file with timed rotation
         error_log_file = os.path.join(LOG_PATH, f'{LOG_FILE_PREFIX}_error.log')
-        error_handler = RotatingFileHandler(
-            error_log_file, 
-            maxBytes=LOG_MAX_SIZE, 
+        error_handler = TimedRotatingFileHandler(
+            error_log_file,
+            when='midnight',
+            interval=1,
             backupCount=LOG_BACKUP_COUNT,
             encoding='utf-8'
         )
+        # Set suffix to include date in filename
+        error_handler.suffix = '%Y-%m-%d'
         error_handler.setLevel(logging.ERROR)
         error_handler.setFormatter(formatter)
         handlers.append(error_handler)
@@ -88,7 +95,7 @@ def setup_logging(app):
     # Log startup message
     logging.info(f"Logging initialized - Level: {LOG_LEVEL}, Path: {LOG_PATH}")
     if LOG_TO_FILE:
-        logging.info(f"Log files: {LOG_PATH}/{LOG_FILE_PREFIX}.log and {LOG_PATH}/{LOG_FILE_PREFIX}_error.log")
+        logging.info(f"Daily log files: {LOG_PATH}/{LOG_FILE_PREFIX}.log and {LOG_PATH}/{LOG_FILE_PREFIX}_error.log (rotates daily at midnight with date suffix)")
     
     return logging.getLogger(__name__)
 
