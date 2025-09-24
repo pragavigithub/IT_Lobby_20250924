@@ -643,7 +643,7 @@ document.addEventListener('DOMContentLoaded', function() {
     let validationRequestId = 0;
     
     document.getElementById('serialNumber').addEventListener('input', function(e) {
-        const serialNumber = this.value.trim().toUpperCase(); // Normalize to uppercase
+        const serialNumber = this.value.trim(); // Normalize to uppercase
         
         // Clear previous timeout
         if (serialValidationTimeout) {
@@ -663,8 +663,8 @@ document.addEventListener('DOMContentLoaded', function() {
     document.getElementById('serialNumber').addEventListener('keypress', function(e) {
         if (e.key === 'Enter') {
             e.preventDefault();
-            const serialNumber = this.value.trim().toUpperCase(); // Normalize consistently
-            
+            const serialNumber = this.value.trim(); // Normalize consistently
+
             // Clear any pending timeout since user pressed Enter
             if (serialValidationTimeout) {
                 clearTimeout(serialValidationTimeout);
@@ -702,7 +702,7 @@ document.addEventListener('DOMContentLoaded', function() {
             
             if (data.success) {
                 // Normalize serial number before adding
-                const normalizedSerial = serialNumber.trim().toUpperCase();
+                const normalizedSerial = serialNumber;
                 
                 // Add to validated serials if not already present
                 if (!currentValidatedSerials.includes(normalizedSerial)) {
