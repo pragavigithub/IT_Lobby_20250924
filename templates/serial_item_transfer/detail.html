@@ -488,35 +488,45 @@ function loadItems() {
     });
 }
 
+// onItemSelected function - consolidated version
 function onItemSelected() {
     const itemSelect = $('#itemSelect');
-    const selectedOption = itemSelect.find('option:selected');
+    const selectedValue = itemSelect.val();
     
-    if (selectedOption.val()) {
-        selectedItem = {
-            itemCode: selectedOption.val(),
-            itemName: selectedOption.data('item-name')
-        };
-        
-        $('#selectedItemCode').text(selectedItem.itemCode);
-        $('#selectedItemName').text(selectedItem.itemName);
-        $('#selectedItemInfo').removeClass('d-none');
-        
-        // Move to step 3
-        currentStep = 3;
-        updateStepProgress();
-        $('#stepSection3').show();
-        
-        // Check if item is serial managed
-        checkItemSerialManagement(selectedItem.itemCode);
-        
-    } else {
+    if (!selectedValue) {
+        // No item selected, reset everything
         selectedItem = null;
         $('#selectedItemInfo').addClass('d-none');
         $('#stepSection3').hide();
+        $('#onHandQuantity').removeClass('bg-success bg-danger').addClass('bg-secondary').text('Not checked');
         currentStep = 2;
         updateStepProgress();
+        return;
     }
+    
+    // Find the selected item from the loaded items
+    const option = itemSelect.find(':selected');
+    const itemCode = selectedValue;
+    const itemName = option.text().replace(itemCode + ' - ', '');
+    
+    // Update selectedItem global variable
+    selectedItem = {
+        itemCode: itemCode,
+        itemName: itemName
+    };
+    
+    // Show selected item info
+    $('#selectedItemCode').text(itemCode);
+    $('#selectedItemName').text(itemName);
+    $('#selectedItemInfo').removeClass('d-none');
+    
+    // Show step 3 section
+    $('#stepSection3').show();
+    currentStep = 3;
+    updateStepProgress();
+    
+    // Call the SAP B1 API to check item requirements
+    checkItemSerialManagement(itemCode);
 }
 
 
@@ -567,66 +577,83 @@ function updateSerialProgress() {
     $('#serialProgress').text(validatedSerials.length + ' / ' + requiredQuantity);
 }
 
+// updatePopulateButton function - consolidated version
 function updatePopulateButton() {
     let canPopulate = false;
     
     if (selectedItem) {
         if ($('#serialNumberSection').is(':visible')) {
-            // Serial managed item
-            canPopulate = validatedSerials.length >= requiredQuantity;
+            // Serial managed item - need all serials validated
+            canPopulate = validatedSerials.length >= requiredQuantity && requiredQuantity > 0;
         } else {
-            // Non-serial item
-            canPopulate = requiredQuantity > 0;
+            // Non-serial item - just need positive quantity and available stock
+            canPopulate = requiredQuantity > 0 && (!selectedItem.onHandQuantity || selectedItem.onHandQuantity >= requiredQuantity);
         }
     }
     
     $('#populateLineItemsBtn').prop('disabled', !canPopulate);
 }
 
+// populateLineItems function - consolidated version with better modal handling
 function populateLineItems() {
     if (!selectedItem) {
         showAlert('Please select an item first', 'error');
         return;
     }
     
+    // Disable the button to prevent multiple submissions
+    const populateBtn = $('#populateLineItemsBtn');
+    const originalText = populateBtn.html();
+    populateBtn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> Processing...');
+    
     // Handle serial managed items
     if ($('#serialNumberSection').is(':visible')) {
         if (validatedSerials.length < requiredQuantity) {
             showAlert('Please validate all required serial numbers first', 'error');
+            populateBtn.prop('disabled', false).html(originalText);
             return;
         }
         
-        // Create line items based on validated serials
-        const promises = validatedSerials.map(function(serial) {
+        // Create line items based on validated serials with better error handling
+        const ajaxPromises = validatedSerials.map(function(serial) {
             return $.ajax({
                 url: '/serial-item-transfer/{{ transfer.id }}/add_serial_item',
                 method: 'POST',
                 data: {
                     serial_number: serial.serialNumber,
                     expected_item_code: selectedItem.itemCode
-                }
+                },
+                timeout: 30000 // 30 second timeout
+            }).catch(function(xhr) {
+                console.error(`Failed to add serial ${serial.serialNumber}:`, xhr);
+                return { success: false, error: xhr.responseText || 'Request failed' };
             });
         });
         
-        Promise.all(promises)
-            .then(function(responses) {
+        Promise.allSettled(ajaxPromises)
+            .then(function(results) {
+                const responses = results.map(r => r.status === 'fulfilled' ? r.value : { success: false });
                 const successCount = responses.filter(r => r.success).length;
+                
                 if (successCount === validatedSerials.length) {
                     showAlert(`Successfully added ${successCount} serial line items`, 'success');
-                    // Refresh page to show new items
+                    // Reset form state and reload after delay
+                    resetItemSelection();
                     setTimeout(function() {
-                        location.reload();
+                        window.location.reload();
                     }, 1500);
                 } else {
-                    showAlert(`Added ${successCount} of ${validatedSerials.length} items. Some items failed.`, 'warning');
+                    showAlert(`Added ${successCount} of ${validatedSerials.length} items. ${validatedSerials.length - successCount} failed.`, 'warning');
+                    // Partial success - reload to show what was added
                     setTimeout(function() {
-                        location.reload();
-                    }, 2000);
+                        window.location.reload();
+                    }, 2500);
                 }
             })
             .catch(function(error) {
-                console.error('Error populating line items:', error);
-                showAlert('Error adding line items', 'error');
+                console.error('Error in Promise.allSettled:', error);
+                showAlert('Unexpected error adding line items', 'error');
+                populateBtn.prop('disabled', false).html(originalText);
             });
     } else {
         // Handle non-serial items
@@ -639,19 +666,25 @@ function populateLineItems() {
                 quantity: requiredQuantity,
                 unit_of_measure: 'EA'
             },
+            timeout: 30000, // 30 second timeout
             success: function(response) {
                 if (response.success) {
                     showAlert(`Successfully added ${requiredQuantity} quantity of ${selectedItem.itemCode}`, 'success');
+                    // Reset form state and reload
+                    resetItemSelection();
                     setTimeout(function() {
-                        location.reload();
+                        window.location.reload();
                     }, 1500);
                 } else {
                     showAlert(response.error || 'Error adding non-serial item', 'error');
+                    populateBtn.prop('disabled', false).html(originalText);
                 }
             },
             error: function(xhr, status, error) {
                 console.error('Error adding non-serial item:', error);
-                showAlert('Error adding non-serial item', 'error');
+                const errorMsg = xhr.responseJSON ? xhr.responseJSON.error : error;
+                showAlert('Error adding non-serial item: ' + errorMsg, 'error');
+                populateBtn.prop('disabled', false).html(originalText);
             }
         });
     }
@@ -785,44 +818,6 @@ function displayOnHandQuantity(quantity) {
 }
 
 
-function onItemSelected() {
-    const itemSelect = $('#itemSelect');
-    const selectedValue = itemSelect.val();
-    
-    if (!selectedValue) {
-        // No item selected, reset everything
-        selectedItem = null;
-        $('#selectedItemInfo').addClass('d-none');
-        $('#stepSection3').hide();
-        $('#onHandQuantity').removeClass('bg-success bg-danger').addClass('bg-secondary').text('Not checked');
-        updateStepProgress();
-        return;
-    }
-    
-    // Find the selected item from the loaded items
-    const option = itemSelect.find(':selected');
-    const itemCode = selectedValue;
-    const itemName = option.text().replace(itemCode + ' - ', '');
-    
-    // Update selectedItem global variable
-    selectedItem = {
-        itemCode: itemCode,
-        itemName: itemName
-    };
-    
-    // Show selected item info
-    $('#selectedItemCode').text(itemCode);
-    $('#selectedItemName').text(itemName);
-    $('#selectedItemInfo').removeClass('d-none');
-    
-    // Show step 3 section
-    $('#stepSection3').show();
-    currentStep = 3;
-    updateStepProgress();
-    
-    // Call the new SAP B1 API to check item requirements
-    checkItemSerialManagement(itemCode);
-}
 
 function onQuantityChanged() {
     const quantityInput = $('#quantityInput');
@@ -1040,6 +1035,7 @@ function checkItemSerialManagement(itemCode) {
     });
 }
 
+// validateSerial function - improved version
 function validateSerial() {
     const serialNumber = $('#serialNumberInput').val().trim();
     
@@ -1082,6 +1078,7 @@ function validateSerial() {
         method: 'POST',
         contentType: 'application/json',
         data: JSON.stringify(data),
+        timeout: 30000,
         success: function(response) {
             $('#serialNumberInput').prop('disabled', false);
             
@@ -1106,7 +1103,7 @@ function validateSerial() {
                 // If we have enough serials, notify user
                 if (validatedSerials.length >= requiredQuantity) {
                     showAlert('All required serial numbers validated! You can now populate line items.', 'success');
-                    $('#populateLineItemsBtn').focus(); // Focus the populate button
+                    $('#populateLineItemsBtn').focus();
                 }
                 
             } else {
@@ -1121,179 +1118,6 @@ function validateSerial() {
             $('#serialNumberInput').focus();
         }
     });
-}
-
-function updatePopulateButton() {
-    let canPopulate = false;
-    
-    if (selectedItem) {
-        if ($('#serialNumberSection').is(':visible')) {
-            // Serial managed item
-            canPopulate = validatedSerials.length >= requiredQuantity;
-        } else {
-            // Non-serial item
-            canPopulate = requiredQuantity > 0;
-        }
-    }
-    
-    $('#populateLineItemsBtn').prop('disabled', !canPopulate);
-}
-
-function populateLineItems() {
-    if (!selectedItem) {
-        showAlert('Please select an item first', 'error');
-        return;
-    }
-    
-    // Handle serial managed items
-    if ($('#serialNumberSection').is(':visible')) {
-        if (validatedSerials.length < requiredQuantity) {
-            showAlert('Please validate all required serial numbers first', 'error');
-            return;
-        }
-        
-        // Create line items based on validated serials
-        const promises = validatedSerials.map(function(serial) {
-            return $.ajax({
-                url: '/serial-item-transfer/{{ transfer.id }}/add_serial_item',
-                method: 'POST',
-                data: {
-                    serial_number: serial.serialNumber,
-                    expected_item_code: selectedItem.itemCode
-                }
-            });
-        });
-        
-        Promise.all(promises)
-            .then(function(responses) {
-                const successCount = responses.filter(r => r.success).length;
-                if (successCount === validatedSerials.length) {
-                    showAlert(`Successfully added ${successCount} serial line items`, 'success');
-                    // Refresh page to show new items
-                    setTimeout(function() {
-                        location.reload();
-                    }, 1500);
-                } else {
-                    showAlert(`Added ${successCount} of ${validatedSerials.length} items. Some items failed.`, 'warning');
-                    setTimeout(function() {
-                        location.reload();
-                    }, 2000);
-                }
-            })
-            .catch(function(error) {
-                console.error('Error populating line items:', error);
-                showAlert('Error adding line items', 'error');
-            });
-    } else {
-        // Handle non-serial items
-        $.ajax({
-            url: '/serial-item-transfer/{{ transfer.id }}/add_non_serial_item',
-            method: 'POST',
-            data: {
-                item_code: selectedItem.itemCode,
-                item_description: selectedItem.itemName,
-                quantity: requiredQuantity,
-                unit_of_measure: 'EA'
-            },
-            success: function(response) {
-                if (response.success) {
-                    showAlert(`Successfully added ${requiredQuantity} quantity of ${selectedItem.itemCode}`, 'success');
-                    setTimeout(function() {
-                        location.reload();
-                    }, 1500);
-                } else {
-                    showAlert(response.error || 'Error adding non-serial item', 'error');
-                }
-            },
-            error: function(xhr, status, error) {
-                console.error('Error adding non-serial item:', error);
-                showAlert('Error adding non-serial item', 'error');
-            }
-        });
-    }
-}
-
-// Missing function implementations to fix frontend wiring issues
-
-function updateStepProgress() {
-    // Update step progress indicators - this could be enhanced with actual visual indicators
-    console.log(`Current step: ${currentStep}`);
-}
-
-function resetItemSelection() {
-    selectedItem = null;
-    validatedSerials = [];
-    requiredQuantity = 1;
-    currentStep = 2;
-    
-    // Reset UI elements
-    $('#itemSelect').val('');
-    $('#selectedItemInfo').addClass('d-none');
-    $('#stepSection3').hide();
-    $('#quantityInput').val(1);
-    $('#serialNumberInput').val('');
-    $('#onHandQuantity').text('Not checked').removeClass().addClass('badge bg-secondary');
-    $('#serialNumberSection').addClass('d-none');
-    $('#validatedSerialsSection').addClass('d-none');
-    $('#populateLineItemsBtn').prop('disabled', true);
-    
-    updateStepProgress();
-    showAlert('Item selection reset', 'info');
-}
-
-function updateSerialProgress() {
-    const progress = `${validatedSerials.length} / ${requiredQuantity}`;
-    $('#serialProgress').text(progress);
-}
-
-function updateValidatedSerialsList() {
-    const tbody = $('#validatedSerialsTableBody');
-    tbody.empty();
-    
-    if (validatedSerials.length > 0) {
-        $('#validatedSerialsSection').removeClass('d-none');
-        
-        validatedSerials.forEach(function(serial, index) {
-            const row = $('<tr>');
-            const serialCell = $('<td>').append($('<span class="font-monospace">').text(serial.serialNumber));
-            const statusCell = $('<td>').append($('<span class="badge bg-success">').text('Validated'));
-            const actionCell = $('<td>').append(
-                $('<button type="button" class="btn btn-sm btn-outline-danger">')
-                .attr('onclick', `removeValidatedSerial(${index})`)
-                .append($('<i class="fas fa-trash">'))
-            );
-            row.append(serialCell).append(statusCell).append(actionCell);
-            tbody.append(row);
-        });
-    } else {
-        $('#validatedSerialsSection').addClass('d-none');
-    }
-}
-
-function removeValidatedSerial(index) {
-    if (index >= 0 && index < validatedSerials.length) {
-        const removed = validatedSerials.splice(index, 1);
-        updateValidatedSerialsList();
-        updateSerialProgress();
-        updatePopulateButton();
-        showAlert(`Removed serial number "${removed[0].serialNumber}"`, 'info');
-        $('#serialNumberInput').focus();
-    }
-}
-
-function displayOnHandQuantity(quantity) {
-    const badge = $('#onHandQuantity');
-    badge.text(quantity);
-    
-    // Update badge color based on quantity
-    badge.removeClass().addClass('badge');
-    if (quantity > 10) {
-        badge.addClass('bg-success');
-    } else if (quantity > 0) {
-        badge.addClass('bg-warning');
-    } else {
-        badge.addClass('bg-danger');
-    }
 }
 
 
