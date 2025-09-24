@@ -31,7 +31,7 @@
             </div>
         </div>
         {% endif %}
-        {% if current_user.has_permission('serial_item_transfer')%}
+        {% if current_user.has_permission('serial_transfer')%}
         <div class="col-md-3 mb-3">
             <div class="card dashboard-card" onclick="window.location.href='/inventory_transfer/serial'">
                 <div class="card-body text-center">
