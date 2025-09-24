@@ -26,7 +26,7 @@ Serial Number Transfer {{ transfer.transfer_number }}
                         {% endif %}
 
                         <small class="text-muted">
-                            Created: {{ transfer.created_at.strftime('%Y-%m-%d %H:%M') }} |
+                            Created: {{ transfer.created_at.strftime('%Y-%m-%d %H:%M') }} by {{ transfer.user.username }} |
                             From: {{ transfer.from_warehouse }} → To: {{ transfer.to_warehouse }}
                         </small>
                     </div>

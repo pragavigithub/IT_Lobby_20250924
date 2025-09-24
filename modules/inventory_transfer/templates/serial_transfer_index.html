@@ -121,7 +121,12 @@
                                     <span class="badge bg-light text-dark">{{ transfer.items|length }} item(s)</span>
                                 </td>
                                 <td>{{ transfer.sap_document_number or 'Not Posted' }}</td>
-                                <td>{{ transfer.created_at.strftime('%Y-%m-%d %H:%M') }}</td>
+                                <td>
+                                    <small>
+                                        {{ transfer.created_at.strftime('%Y-%m-%d %H:%M') }}<br>
+                                        <span class="text-muted">{{ transfer.user.username }}</span>
+                                    </small>
+                                </td>
                                 <td>
                                     <a href="{{ url_for('inventory_transfer.serial_detail', transfer_id=transfer.id) }}" class="btn btn-sm btn-outline-primary">
                                         <i data-feather="eye"></i> View
