@@ -1,0 +1,44 @@
+modules = ["python-3.11", "web", "nodejs-20", "bash"]
+
+[nix]
+channel = "stable-25_05"
+packages = ["cacert", "cargo", "freetype", "lcms2", "libffi", "libiconv", "libimagequant", "libjpeg", "libtiff", "libwebp", "libxcrypt", "openjpeg", "openssl", "pkg-config", "postgresql", "rustc", "sqlite", "tcl", "tk", "unixODBC", "zlib"]
+
+[deployment]
+deploymentTarget = "autoscale"
+run = ["uv", "run", "gunicorn", "--bind", "0.0.0.0:5000", "main:app"]
+
+[workflows]
+runButton = "Project"
+
+[[workflows.workflow]]
+name = "Project"
+mode = "parallel"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "WMS Application"
+
+[[workflows.workflow]]
+name = "WMS Application"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "uv run gunicorn --bind 0.0.0.0:5000 --reuse-port --reload main:app"
+waitForPort = 5000
+
+[workflows.workflow.metadata]
+outputType = "webview"
+
+[[ports]]
+localPort = 5000
+externalPort = 80
+
+[[ports]]
+localPort = 44019
+externalPort = 3000
+
+[agent]
+expertMode = true
