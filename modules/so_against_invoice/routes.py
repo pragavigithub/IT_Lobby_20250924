@@ -1505,7 +1505,7 @@ def sync_so_data():
                         for line in open_lines:
                             line_num = line.get('LineNum')
                             item_code = line.get('ItemCode')
-                            description = line.get('Dscription', '')
+                            description = line.get('ItemDescription', '')
                             quantity = line.get('Quantity', 0)
                             warehouse_code = line.get('WarehouseCode', '')
                             
