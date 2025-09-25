@@ -974,6 +974,140 @@ document.addEventListener('DOMContentLoaded', function() {
             syncBtn.innerHTML = originalText;
         });
     });
+    
+    // Auto-sync functionality - automatically sync SO data when document opens
+    // Only sync if document has SO data and is not already posted
+    {% if document.so_doc_entry and document.status != 'posted' and document.items %}
+    autoSyncSOData();
+    {% endif %}
+    
+    function autoSyncSOData() {
+        // Show subtle notification that auto-sync is happening
+        const notification = document.createElement('div');
+        notification.className = 'alert alert-info alert-dismissible fade show position-fixed';
+        notification.style.cssText = 'top: 20px; right: 20px; z-index: 1050; min-width: 300px;';
+        notification.innerHTML = `
+            <i class="fas fa-sync-alt fa-spin"></i> Auto-syncing latest SO data from SAP B1...
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        `;
+        document.body.appendChild(notification);
+        
+        fetch('/so-against-invoice/api/sync-so-data', {
+            method: 'POST',
+            headers: { 
+                'Content-Type': 'application/json'
+            },
+            credentials: 'same-origin',
+            body: JSON.stringify({ doc_id: docId })
+        })
+        .then(response => response.json())
+        .then(data => {
+            // Remove the notification
+            notification.remove();
+            
+            if (data.success) {
+                // Check if there were any changes
+                if (data.changes) {
+                    const { lines_added, lines_updated, lines_removed } = data.changes;
+                    const totalChanges = lines_added + lines_updated + lines_removed;
+                    
+                    if (totalChanges > 0) {
+                        // Show success notification with changes
+                        const successNotification = document.createElement('div');
+                        successNotification.className = 'alert alert-success alert-dismissible fade show position-fixed';
+                        successNotification.style.cssText = 'top: 20px; right: 20px; z-index: 1050; min-width: 350px;';
+                        successNotification.innerHTML = `
+                            <strong><i class="fas fa-check-circle"></i> SO Data Synced!</strong><br>
+                            <small>
+                                ${lines_added > 0 ? `• ${lines_added} lines added<br>` : ''}
+                                ${lines_updated > 0 ? `• ${lines_updated} lines updated<br>` : ''}
+                                ${lines_removed > 0 ? `• ${lines_removed} lines removed<br>` : ''}
+                                Total lines: ${data.total_lines}
+                            </small>
+                            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                        `;
+                        document.body.appendChild(successNotification);
+                        
+                        // Auto-hide after 5 seconds
+                        setTimeout(() => {
+                            successNotification.remove();
+                        }, 5000);
+                        
+                        // Reload page to show updated data
+                        setTimeout(() => {
+                            window.location.reload();
+                        }, 2000);
+                    } else {
+                        // Show brief success notification
+                        const successNotification = document.createElement('div');
+                        successNotification.className = 'alert alert-info alert-dismissible fade show position-fixed';
+                        successNotification.style.cssText = 'top: 20px; right: 20px; z-index: 1050; min-width: 300px;';
+                        successNotification.innerHTML = `
+                            <i class="fas fa-check-circle"></i> SO data is up to date
+                            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                        `;
+                        document.body.appendChild(successNotification);
+                        
+                        // Auto-hide after 3 seconds
+                        setTimeout(() => {
+                            successNotification.remove();
+                        }, 3000);
+                    }
+                } else {
+                    // Show basic success notification
+                    const successNotification = document.createElement('div');
+                    successNotification.className = 'alert alert-success alert-dismissible fade show position-fixed';
+                    successNotification.style.cssText = 'top: 20px; right: 20px; z-index: 1050; min-width: 300px;';
+                    successNotification.innerHTML = `
+                        <i class="fas fa-check-circle"></i> ${data.message}
+                        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                    `;
+                    document.body.appendChild(successNotification);
+                    
+                    // Auto-hide after 3 seconds
+                    setTimeout(() => {
+                        successNotification.remove();
+                    }, 3000);
+                }
+            } else {
+                // Show error notification (less intrusive than alert)
+                const errorNotification = document.createElement('div');
+                errorNotification.className = 'alert alert-warning alert-dismissible fade show position-fixed';
+                errorNotification.style.cssText = 'top: 20px; right: 20px; z-index: 1050; min-width: 300px;';
+                errorNotification.innerHTML = `
+                    <strong><i class="fas fa-exclamation-triangle"></i> Auto-sync notice:</strong><br>
+                    <small>${data.error}</small>
+                    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                `;
+                document.body.appendChild(errorNotification);
+                
+                // Auto-hide after 7 seconds
+                setTimeout(() => {
+                    errorNotification.remove();
+                }, 7000);
+            }
+        })
+        .catch(error => {
+            // Remove the loading notification
+            notification.remove();
+            
+            // Show error notification (less intrusive than alert)
+            const errorNotification = document.createElement('div');
+            errorNotification.className = 'alert alert-warning alert-dismissible fade show position-fixed';
+            errorNotification.style.cssText = 'top: 20px; right: 20px; z-index: 1050; min-width: 300px;';
+            errorNotification.innerHTML = `
+                <strong><i class="fas fa-exclamation-triangle"></i> Auto-sync failed:</strong><br>
+                <small>${error.message}</small>
+                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+            `;
+            document.body.appendChild(errorNotification);
+            
+            // Auto-hide after 7 seconds
+            setTimeout(() => {
+                errorNotification.remove();
+            }, 7000);
+        });
+    }
 });
 </script>
 {% endblock %}

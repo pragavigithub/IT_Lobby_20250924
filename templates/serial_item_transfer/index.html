@@ -207,23 +207,34 @@ $(document).ready(function() {
     });
 });
 
-function cleanupEmptyDrafts() {
+async function cleanupEmptyDrafts() {
     if (confirm('This will delete all draft transfers that have no line items. Are you sure?')) {
-        $.ajax({
-            url: '/serial-item-transfer/cleanup_empty_drafts',
-            method: 'POST',
-            success: function(response) {
-                if (response.success) {
-                    alert(`✅ Cleaned up ${response.count} empty draft transfers`);
-                    location.reload(); // Refresh the page to show updated list
-                } else {
-                    alert('❌ Error: ' + response.error);
-                }
-            },
-            error: function() {
-                alert('❌ Error cleaning up empty drafts');
+        const button = event.target;
+        const originalText = button.innerHTML;
+        
+        try {
+            // Show loading state
+            button.innerHTML = '<span class="spinner-border spinner-border-sm" role="status"></span> Cleaning...';
+            button.disabled = true;
+            
+            // Use WMSApp's apiRequest method for proper error handling
+            const response = await window.wmsApp.apiRequest('/serial-item-transfer/cleanup_empty_drafts', {
+                method: 'POST'
+            });
+            
+            if (response.success) {
+                window.wmsApp.showAlert(`✅ Cleaned up ${response.count} empty draft transfers`, 'success');
+                location.reload(); // Refresh the page to show updated list
+            } else {
+                window.wmsApp.showAlert('❌ Error: ' + response.error, 'danger');
             }
-        });
+        } catch (error) {
+            window.wmsApp.showAlert('❌ Error cleaning up empty drafts: ' + error.message, 'danger');
+        } finally {
+            // Restore button state
+            button.innerHTML = originalText;
+            button.disabled = false;
+        }
     }
 }
 </script>
