@@ -48,6 +48,7 @@ def index():
         page = request.args.get('page', 1, type=int)
         per_page = request.args.get('per_page', 10, type=int)
         search = request.args.get('search', '', type=str)
+        user_based = request.args.get('user_based', 'true', type=str)
         
         # Ensure per_page is within allowed range
         if per_page not in [10, 25, 50, 100]:
@@ -56,8 +57,13 @@ def index():
         # Build base query
         query = SOInvoiceDocument.query
         
-        # Apply user-based filtering for non-admin users
-        if current_user.role not in ['admin', 'manager']:
+        # Apply user-based filtering
+        if current_user.role in ['admin', 'manager']:
+            # Admin/Manager can see all or filter by user preference
+            if user_based == 'true':
+                query = query.filter_by(user_id=current_user.id)
+        else:
+            # Non-admin users only see their own documents
             query = query.filter_by(user_id=current_user.id)
         
         # Apply search filter if provided
@@ -84,6 +90,7 @@ def index():
                              pagination=documents_paginated,
                              search=search,
                              per_page=per_page,
+                             user_based=user_based,
                              current_user=current_user)
     
     except Exception as e:
@@ -94,22 +101,59 @@ def index():
                              pagination=None,
                              search='',
                              per_page=10,
+                             user_based='true',
                              current_user=current_user)
 
 
-@so_invoice_bp.route('/create', methods=['GET', 'POST'])
+@so_invoice_bp.route('/cleanup_empty_drafts', methods=['POST'])
+@login_required
+def cleanup_empty_drafts():
+    """Clean up empty draft SO Against Invoice documents that have no line items"""
+    try:
+        if not current_user.has_permission('so_against_invoice'):
+            flash('Access denied - SO Against Invoice permissions required', 'error')
+            return redirect(url_for('so_against_invoice.index'))
+
+        # Find all draft documents by this user that have no items
+        empty_drafts = db.session.query(SOInvoiceDocument).filter(
+            SOInvoiceDocument.user_id == current_user.id,
+            SOInvoiceDocument.status == 'draft',
+            ~SOInvoiceDocument.items.any()  # No line items
+        ).all()
+
+        count = 0
+        for draft in empty_drafts:
+            db.session.delete(draft)
+            count += 1
+
+        db.session.commit()
+
+        logging.info(f"✅ Cleaned up {count} empty draft SO Against Invoice documents for user {current_user.username}")
+
+        if count > 0:
+            flash(f'✅ Successfully cleaned up {count} empty draft documents', 'success')
+        else:
+            flash('No empty draft documents found to clean up', 'info')
+        
+        return redirect(url_for('so_against_invoice.index'))
+
+    except Exception as e:
+        db.session.rollback()
+        logging.error(f"❌ Error cleaning up empty drafts: {str(e)}")
+        flash(f'Error cleaning up empty drafts: {str(e)}', 'error')
+        return redirect(url_for('so_against_invoice.index'))
+
+
+@so_invoice_bp.route('/create', methods=['POST'])
 @login_required 
 def create():
-    """Create new SO Against Invoice document"""
+    """Create new SO Against Invoice document - Skip process flow screen"""
     if not current_user.has_permission('so_against_invoice'):
         flash('Access denied - SO Against Invoice permissions required', 'error')
         return redirect(url_for('dashboard'))
     
-    if request.method == 'GET':
-        return render_template('create.html')
-    
     try:
-        # Generate document number
+        # Generate document number immediately and create the document
         document_number = generate_so_invoice_number()
         
         # Create new document
@@ -123,13 +167,14 @@ def create():
         db.session.commit()
         
         flash(f'SO Against Invoice {document_number} created successfully', 'success')
+        # Skip the process flow screen and go directly to detail page
         return redirect(url_for('so_against_invoice.detail', doc_id=document.id))
     
     except Exception as e:
         db.session.rollback()
         logging.error(f"Error creating SO Against Invoice: {str(e)}")
         flash(f'Error creating document: {str(e)}', 'error')
-        return render_template('create.html')
+        return redirect(url_for('so_against_invoice.index'))
 
 
 @so_invoice_bp.route('/detail/<int:doc_id>')
