@@ -2105,7 +2105,7 @@ def serial_cleanup_empty_drafts():
         empty_drafts = db.session.query(SerialNumberTransfer).filter(
             SerialNumberTransfer.user_id == current_user.id,
             SerialNumberTransfer.status == 'draft',
-            ~SerialNumberTransfer.transfer_items.any()  # No transfer items
+            ~SerialNumberTransfer.items.any()  # No transfer items
         ).all()
 
         count = 0
