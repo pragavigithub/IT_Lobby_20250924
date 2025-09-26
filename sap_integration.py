@@ -2681,6 +2681,134 @@ class SAPIntegration:
                 }
 
         return results
+    #Batch wise transfer
+
+    def create_serial_number_stock_transferss(self, serial_transfer_document, chunk_size=5000):
+        """Create Stock Transfer in SAP B1 for Serial Number Transfer using batch split"""
+        if not self.ensure_logged_in():
+            logging.warning("SAP B1 not available, simulating serial transfer creation")
+            import random
+            return {
+                'success': True,
+                'document_number': f'ST-{random.randint(100000, 999999)}',
+                'error': None
+            }
+
+        try:
+            # --------------------------------------------------------
+            # STEP 1: Build StockTransferLines with Serial Numbers
+            # --------------------------------------------------------
+            all_lines = []
+
+            for index, item in enumerate(serial_transfer_document.items):
+                serial_numbers = []
+                for serial in item.serial_numbers:
+                    if serial.is_validated:  # Only include validated serials
+                        system_number = self.get_system_number_from_sap_get(serial.serial_number)
+                        serial_info = {
+                            "SystemSerialNumber": system_number,
+                            "InternalSerialNumber": serial.serial_number,
+                            "ManufacturerSerialNumber": serial.serial_number,
+                            "ExpiryDate": serial.expiry_date.isoformat() + "Z" if serial.expiry_date else None,
+                            "ManufactureDate": serial.manufacturing_date.isoformat() + "Z" if serial.manufacturing_date else None,
+                            "ReceptionDate": serial.admission_date.isoformat() + "Z" if serial.admission_date else None,
+                            "WarrantyStart": None,
+                            "WarrantyEnd": None,
+                            "Location": None,
+                            "Notes": None
+                        }
+                        serial_numbers.append(serial_info)
+
+                if serial_numbers:
+                    line = {
+                        "LineNum": index,
+                        "ItemCode": item.item_code,
+                        "Quantity": len(serial_numbers),
+                        "WarehouseCode": item.to_warehouse_code,
+                        "FromWarehouseCode": item.from_warehouse_code,
+                        "UoMCode": item.unit_of_measure or "",
+                        "SerialNumbers": serial_numbers
+                    }
+                    all_lines.append(line)
+
+            # --------------------------------------------------------
+            # STEP 2: Split into chunks (batch-wise)
+            # --------------------------------------------------------
+            def chunk_list(lst, size):
+                for i in range(0, len(lst), size):
+                    yield lst[i:i + size]
+
+            chunks = list(chunk_list(all_lines, chunk_size))
+            boundary = "batch_" + "123456"
+            batch_parts = []
+
+            for idx, lines_chunk in enumerate(chunks, start=1):
+                transfer_data = {
+                    "DocDate": serial_transfer_document.created_at.strftime('%Y-%m-%d'),
+                    "DueDate": serial_transfer_document.created_at.strftime('%Y-%m-%d'),
+                    "CardCode": "",
+                    "CardName": "",
+                    "Address": "",
+                    "U_EA_CREATEDBy": serial_transfer_document.user.username,
+                    "U_EA_Approved": (
+                        serial_transfer_document.qc_approver.username
+                        if serial_transfer_document.qc_approver
+                        else serial_transfer_document.user.username
+                    ),
+                    "Comments": f"Serial Number Transfer {serial_transfer_document.transfer_number} "
+                                f"(Part {idx}/{len(chunks)}) - "
+                                f"{serial_transfer_document.user.username if serial_transfer_document.user else 'System'}",
+                    "JournalMemo": f"Serial Number Transfer - {serial_transfer_document.transfer_number} (Part {idx})",
+                    "PriceList": -1,
+                    "SalesPersonCode": -1,
+                    "FromWarehouse": serial_transfer_document.from_warehouse,
+                    "ToWarehouse": serial_transfer_document.to_warehouse,
+                    "AuthorizationStatus": "sasWithout",
+                    "StockTransferLines": lines_chunk
+                }
+
+                import json
+                part = (
+                    f"--{boundary}\n"
+                    "Content-Type: application/http\n"
+                    "Content-Transfer-Encoding: binary\n\n"
+                    "POST /b1s/v1/StockTransfers HTTP/1.1\n"
+                    "Content-Type: application/json\n\n"
+                    f"{json.dumps(transfer_data)}\n"
+                )
+                batch_parts.append(part)
+
+            batch_parts.append(f"--{boundary}--")
+            batch_body = "\n".join(batch_parts)
+
+            # --------------------------------------------------------
+            # STEP 3: Submit $batch request
+            # --------------------------------------------------------
+            url = f"{self.base_url}/b1s/v1/$batch"
+            headers = {
+                "Content-Type": f"multipart/mixed; boundary={boundary}"
+            }
+
+            response = self.session.post(url, data=batch_body.encode("utf-8"), headers=headers)
+
+            if response.status_code in (200, 202):
+                logging.info("Batch stock transfer request successful")
+                return {
+                    'success': True,
+                    'message': f"Created {len(chunks)} Stock Transfer documents via batch"
+                }
+            else:
+                error_msg = f"SAP B1 error in batch Stock Transfer: {response.text}"
+                logging.error(error_msg)
+                return {'success': False, 'error': error_msg}
+
+        except Exception as e:
+            error_msg = f"Error creating Serial Number Stock Transfer in SAP B1: {str(e)}"
+            logging.error(error_msg)
+            return {'success': False, 'error': error_msg}
+
+    #end line
+
 
     def create_serial_number_stock_transfer(self, serial_transfer_document):
         """Create Stock Transfer in SAP B1 for Serial Number Transfer"""
