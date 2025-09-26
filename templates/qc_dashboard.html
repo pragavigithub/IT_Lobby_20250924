@@ -852,47 +852,85 @@ function showTransferRejectionModal(transferId, transferNumber) {
 }
 
 // Serial Number Transfer approval functions
+<!--function showSerialTransferApprovalModal(transferId, transferNumber) {-->
+<!--    const approveButton = document.getElementById(`approve-serial-${transferId}`);-->
+<!--    const originalHTML = approveButton.innerHTML;-->
+<!--    -->
+<!--    if (confirm(`Are you sure you want to approve serial number transfer ${transferNumber}? This will post the transfer to SAP B1.`)) {-->
+<!--        // Set processing state-->
+<!--        approveButton.disabled = true;-->
+<!--        approveButton.innerHTML = '<i data-feather="loader" class="spin"></i> Processing...';-->
+<!--        feather.replace();-->
+<!--        -->
+<!--        // Make AJAX call to approve serial transfer-->
+<!--        fetch(`/inventory_transfer/serial/${transferId}/qc_approve`, {-->
+<!--            method: 'POST',-->
+<!--            headers: {-->
+<!--                'Content-Type': 'application/json',-->
+<!--            },-->
+<!--            body: JSON.stringify({ qc_notes: '' })-->
+<!--        })-->
+<!--        .then(response => response.json())-->
+<!--        .then(data => {-->
+<!--            if (data.success) {-->
+<!--                alert(`Serial Number Transfer approved successfully! ${data.message}`);-->
+<!--                location.reload();-->
+<!--            } else {-->
+<!--                alert(`Error approving serial transfer: ${data.error}`);-->
+<!--                // If there's a redirect, go to it-->
+<!--                if (data.redirect) {-->
+<!--                    window.location.href = data.redirect;-->
+<!--                } else {-->
+<!--                    // Restore button state on error-->
+<!--                    approveButton.disabled = false;-->
+<!--                    approveButton.innerHTML = originalHTML;-->
+<!--                    feather.replace();-->
+<!--                }-->
+<!--            }-->
+<!--        })-->
+<!--        .catch(error => {-->
+<!--            console.error('Error:', error);-->
+<!--            //alert('Error approving serial transfer');-->
+<!--            alert(`Serial Number Transfer approved successfully! ${data.message}`);-->
+<!--            // Restore button state on error-->
+<!--            approveButton.disabled = false;-->
+<!--            approveButton.innerHTML = originalHTML;-->
+<!--            feather.replace();-->
+<!--        });-->
+<!--    }-->
+<!--}-->
+
 function showSerialTransferApprovalModal(transferId, transferNumber) {
     const approveButton = document.getElementById(`approve-serial-${transferId}`);
     const originalHTML = approveButton.innerHTML;
-    
-    if (confirm(`Are you sure you want to approve serial number transfer ${transferNumber}? This will post the transfer to SAP B1.`)) {
-        // Set processing state
+
+    if (confirm(`Approve serial transfer ${transferNumber}?`)) {
+        isProcessing = true; // 🚀 stop auto-refresh
         approveButton.disabled = true;
         approveButton.innerHTML = '<i data-feather="loader" class="spin"></i> Processing...';
         feather.replace();
-        
-        // Make AJAX call to approve serial transfer
+
         fetch(`/inventory_transfer/serial/${transferId}/qc_approve`, {
             method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
+            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ qc_notes: '' })
         })
-        .then(response => response.json())
+        .then(r => r.json())
         .then(data => {
+            isProcessing = false; // ✅ allow refresh again
             if (data.success) {
-                alert(`Serial Number Transfer approved successfully! ${data.message}`);
+                alert(`Approved successfully: ${data.message}`);
                 location.reload();
             } else {
-                alert(`Error approving serial transfer: ${data.error}`);
-                // If there's a redirect, go to it
-                if (data.redirect) {
-                    window.location.href = data.redirect;
-                } else {
-                    // Restore button state on error
-                    approveButton.disabled = false;
-                    approveButton.innerHTML = originalHTML;
-                    feather.replace();
-                }
+                alert(`Error: ${data.error}`);
+                approveButton.disabled = false;
+                approveButton.innerHTML = originalHTML;
+                feather.replace();
             }
         })
-        .catch(error => {
-            console.error('Error:', error);
-            //alert('Error approving serial transfer');
-            alert(`Serial Number Transfer approved successfully! ${data.message}`);
-            // Restore button state on error
+        .catch(err => {
+            console.error('Error:', err);
+            isProcessing = false;
             approveButton.disabled = false;
             approveButton.innerHTML = originalHTML;
             feather.replace();
@@ -1025,10 +1063,24 @@ function showSerialItemTransferRejectionModal(transferId, transferNumber) {
     }
 }
 
+let isProcessing = false;
+
 function refreshData() {
+    if (isProcessing) {
+        console.log("Skipping refresh: process in progress...");
+        return;
+    }
     location.reload();
 }
-
+<!--function refreshData() {-->
+<!--    location.reload();-->
+<!--}-->
+document.querySelectorAll("button").forEach(btn => {
+    btn.addEventListener("click", () => {
+        isProcessing = true;
+        setTimeout(() => { isProcessing = false }, 20000); // resume after 20s
+    });
+});
 // Auto-refresh every 30 seconds
 setInterval(function() {
     console.log('Auto-refreshing QC dashboard...');
