@@ -6,8 +6,10 @@ from flask import Blueprint, render_template, request, redirect, url_for, flash,
 from flask_login import login_required, current_user
 from app import db
 from modules.grpo.models import GRPODocument, GRPOItem
+from models import SAPJob
 #from modules.shared.models import User
 import logging
+import json
 from datetime import datetime
 
 grpo_bp = Blueprint('grpo', __name__, url_prefix='/grpo')
@@ -131,48 +133,38 @@ def approve(grpo_id):
         for item in grpo.items:
             item.qc_status = 'approved'
         
-        # Update GRPO status
-        grpo.status = 'qc_approved'
+        # Update GRPO status to pending SAP sync
+        grpo.status = 'qc_pending_sync'
         grpo.qc_approver_id = current_user.id
         grpo.qc_approved_at = datetime.utcnow()
         grpo.qc_notes = qc_notes
+        grpo.updated_at = datetime.utcnow()
         
-        # Initialize SAP integration and post to SAP B1
-        from sap_integration import SAPIntegration
-        sap = SAPIntegration()
+        # Create SAP job for background processing
+        sap_job = SAPJob(
+            job_type='grpo_post',
+            document_type='grpo',
+            document_id=grpo.id,
+            status='pending',
+            payload=json.dumps({
+                'grpo_id': grpo.id,
+                'user_id': current_user.id,
+                'qc_notes': qc_notes
+            }),
+            user_id=current_user.id
+        )
         
-        # Log the posting attempt
-        logging.info(f" Attempting to post GRPO {grpo_id} to SAP B1...")
-        logging.info(f"GRPO Items: {len(grpo.items)} items, QC Approved: {len([i for i in grpo.items if i.qc_status == 'approved'])}")
+        db.session.add(sap_job)
+        db.session.commit()
         
-        # Post GRPO to SAP B1 as Purchase Delivery Note
-        sap_result = sap.post_grpo_to_sap(grpo)
+        logging.info(f"✅ GRPO {grpo_id} QC approved and queued for SAP B1 posting (Job #{sap_job.id})")
         
-        # Log the result
-        logging.info(f"📡 SAP B1 posting result: {sap_result}")
-        
-        if sap_result.get('success'):
-            grpo.sap_document_number = sap_result.get('sap_document_number')
-            grpo.status = 'posted'
-            db.session.commit()
-            
-            logging.info(f" GRPO {grpo_id} QC approved and posted to SAP B1 as {grpo.sap_document_number}")
-            return jsonify({
-                'success': True,
-                'message': f'GRPO approved and posted to SAP B1 as {grpo.sap_document_number}',
-                'sap_document_number': grpo.sap_document_number
-            })
-        else:
-            # If SAP posting fails, still mark as QC approved but not posted
-            db.session.commit()
-            error_msg = sap_result.get('error', 'Unknown SAP error')
-            
-            logging.warning(f" GRPO {grpo_id} QC approved but SAP posting failed: {error_msg}")
-            return jsonify({
-                'success': False,
-                'error': f'GRPO approved but SAP posting failed: {error_msg}',
-                'status': 'qc_approved'
-            })
+        return jsonify({
+            'success': True,
+            'message': f'GRPO approved successfully! SAP posting is being processed in the background.',
+            'status': 'qc_pending_sync',
+            'job_id': sap_job.id
+        })
         
     except Exception as e:
         logging.error(f"Error approving GRPO: {str(e)}")

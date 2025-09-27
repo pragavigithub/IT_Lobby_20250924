@@ -6,7 +6,7 @@ import json
 import re
 
 from app import db
-from models import SerialItemTransfer, SerialItemTransferItem, DocumentNumberSeries
+from models import SerialItemTransfer, SerialItemTransferItem, DocumentNumberSeries, SAPJob
 from sap_integration import SAPIntegration
 from sqlalchemy import or_
 
@@ -498,18 +498,20 @@ def approve_transfer(transfer_id):
 
         # Check QC permissions
         if not current_user.has_permission('qc_dashboard') and current_user.role not in ['admin', 'manager']:
-            flash('Access denied - QC permissions required', 'error')
-            return redirect(url_for('qc_dashboard'))
+            return jsonify({'success': False, 'error': 'QC permissions required'}), 403
 
         if transfer.status != 'submitted':
-            flash('Only submitted transfers can be approved', 'error')
-            return redirect(url_for('qc_dashboard'))
+            return jsonify({'success': False, 'error': 'Only submitted transfers can be approved'}), 400
 
         # Get QC notes
-        qc_notes = request.form.get('qc_notes', '').strip()
+        qc_notes = ''
+        if request.form:
+            qc_notes = request.form.get('qc_notes', '').strip()
+        elif request.json:
+            qc_notes = request.json.get('qc_notes', '').strip()
 
-        # Update transfer status
-        transfer.status = 'qc_approved'
+        # Update transfer status to pending SAP sync
+        transfer.status = 'qc_pending_sync'
         transfer.qc_approver_id = current_user.id
         transfer.qc_approved_at = datetime.utcnow()
         transfer.qc_notes = qc_notes
@@ -520,27 +522,36 @@ def approve_transfer(transfer_id):
             item.qc_status = 'approved'
             item.updated_at = datetime.utcnow()
 
+        # Create SAP job for background processing
+        sap_job = SAPJob(
+            job_type='serial_transfer',
+            document_type='serial_item_transfer',
+            document_id=transfer.id,
+            status='pending',
+            payload=json.dumps({
+                'transfer_id': transfer.id,
+                'user_id': current_user.id,
+                'qc_notes': qc_notes
+            }),
+            user_id=current_user.id
+        )
+
+        db.session.add(sap_job)
         db.session.commit()
 
-        logging.info(f"Serial Item Transfer {transfer_id} approved by {current_user.username}")
-        flash(f'Serial Item Transfer {transfer.transfer_number} approved successfully!', 'success')
+        logging.info(f"✅ Serial Item Transfer {transfer_id} QC approved and queued for SAP B1 posting (Job #{sap_job.id})")
 
-        # Try to post to SAP B1 (optional - based on your business process)
-        try:
-            sap = SAPIntegration()
-            if sap.ensure_logged_in():
-                # Add SAP posting logic here if needed
-                logging.info(f"Serial Item Transfer {transfer_id} ready for SAP posting")
-        except Exception as e:
-            logging.warning(f"SAP posting preparation failed: {str(e)}")
-
-        return redirect(url_for('qc_dashboard'))
+        return jsonify({
+            'success': True,
+            'message': f'Serial Item Transfer approved successfully! SAP posting is being processed in the background.',
+            'status': 'qc_pending_sync',
+            'job_id': sap_job.id
+        })
 
     except Exception as e:
         logging.error(f"Error approving serial item transfer: {str(e)}")
         db.session.rollback()
-        flash('Error approving transfer', 'error')
-        return redirect(url_for('qc_dashboard'))
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 
 @serial_item_bp.route('/<int:transfer_id>/reject', methods=['POST'])
