@@ -1916,6 +1916,34 @@ def qc_dashboard():
     from modules.invoice_creation.models import InvoiceDocument
     pending_invoices = InvoiceDocument.query.filter_by(status='pending_qc').order_by(
         InvoiceDocument.created_at.desc()).all()
+    
+    # Get documents pending SAP sync (approved but waiting for SAP posting)
+    from models import SAPJob
+    
+    pending_sync_grpos = GRPODocument.query.filter_by(status='qc_pending_sync').order_by(GRPODocument.qc_approved_at.desc()).all()
+    pending_sync_serial_item_transfers = SerialItemTransfer.query.filter_by(status='qc_pending_sync').order_by(SerialItemTransfer.qc_approved_at.desc()).all()
+    
+    # Get corresponding SAP jobs for these documents
+    pending_sap_jobs = []
+    for grpo in pending_sync_grpos:
+        job = SAPJob.query.filter_by(document_type='grpo', document_id=grpo.id).order_by(SAPJob.created_at.desc()).first()
+        if job:
+            pending_sap_jobs.append({
+                'job': job,
+                'document': grpo,
+                'document_type': 'GRPO',
+                'document_number': grpo.po_number
+            })
+    
+    for transfer in pending_sync_serial_item_transfers:
+        job = SAPJob.query.filter_by(document_type='serial_item_transfer', document_id=transfer.id).order_by(SAPJob.created_at.desc()).first()
+        if job:
+            pending_sap_jobs.append({
+                'job': job,
+                'document': transfer,
+                'document_type': 'Serial Item Transfer',
+                'document_number': transfer.transfer_number
+            })
 
     # Calculate metrics for today
     from datetime import datetime, date
@@ -2207,7 +2235,110 @@ def qc_dashboard():
                            approved_today=approved_today,
                            qc_approved_serial_item_transfers=qc_approved_serial_item_transfers,
                            rejected_today=rejected_today,
-                           avg_processing_time=avg_processing_time)
+                           avg_processing_time=avg_processing_time,
+                           pending_sap_jobs=pending_sap_jobs,
+                           pending_sync_count=len(pending_sap_jobs))
+
+
+@app.route('/api/sap_job_status/<int:job_id>')
+@login_required
+def get_sap_job_status(job_id):
+    """Get real-time status of a SAP job"""
+    try:
+        from models import SAPJob
+        job = SAPJob.query.get_or_404(job_id)
+        
+        # Check user permissions
+        if not current_user.has_permission('qc_dashboard') and current_user.role not in ['admin', 'manager']:
+            return jsonify({'error': 'Access denied'}), 403
+            
+        # Get document status as well
+        document_status = None
+        if job.document_type == 'grpo':
+            document = GRPODocument.query.get(job.document_id)
+            document_status = document.status if document else None
+        elif job.document_type == 'serial_item_transfer':
+            from models import SerialItemTransfer
+            document = SerialItemTransfer.query.get(job.document_id)
+            document_status = document.status if document else None
+            
+        return jsonify({
+            'job_id': job.id,
+            'status': job.status,
+            'document_type': job.document_type,
+            'document_id': job.document_id,
+            'document_status': document_status,
+            'error_message': job.error_message,
+            'retry_count': job.retry_count,
+            'max_retries': job.max_retries,
+            'sap_document_number': job.sap_document_number,
+            'created_at': job.created_at.isoformat() if job.created_at else None,
+            'started_at': job.started_at.isoformat() if job.started_at else None,
+            'completed_at': job.completed_at.isoformat() if job.completed_at else None,
+            'next_retry_at': job.next_retry_at.isoformat() if job.next_retry_at else None
+        })
+        
+    except Exception as e:
+        logging.error(f"Error getting SAP job status: {str(e)}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/sap_jobs_status')
+@login_required  
+def get_all_sap_jobs_status():
+    """Get status of all pending/processing SAP jobs"""
+    try:
+        from models import SAPJob
+        
+        # Check user permissions
+        if not current_user.has_permission('qc_dashboard') and current_user.role not in ['admin', 'manager']:
+            return jsonify({'error': 'Access denied'}), 403
+            
+        # Get active jobs (pending, processing, retrying)
+        active_jobs = SAPJob.query.filter(SAPJob.status.in_(['pending', 'processing', 'retrying'])).order_by(SAPJob.created_at.desc()).all()
+        
+        jobs_data = []
+        for job in active_jobs:
+            # Get document info
+            document_info = {}
+            if job.document_type == 'grpo':
+                document = GRPODocument.query.get(job.document_id)
+                if document:
+                    document_info = {
+                        'number': document.po_number,
+                        'supplier': document.supplier_name,
+                        'status': document.status
+                    }
+            elif job.document_type == 'serial_item_transfer':
+                from models import SerialItemTransfer
+                document = SerialItemTransfer.query.get(job.document_id)
+                if document:
+                    document_info = {
+                        'number': document.transfer_number,
+                        'from_warehouse': document.from_warehouse,
+                        'to_warehouse': document.to_warehouse,
+                        'status': document.status
+                    }
+                    
+            jobs_data.append({
+                'job_id': job.id,
+                'status': job.status,
+                'document_type': job.document_type,
+                'document_id': job.document_id,
+                'document_info': document_info,
+                'error_message': job.error_message,
+                'retry_count': job.retry_count,
+                'max_retries': job.max_retries,
+                'created_at': job.created_at.isoformat() if job.created_at else None,
+                'started_at': job.started_at.isoformat() if job.started_at else None,
+                'next_retry_at': job.next_retry_at.isoformat() if job.next_retry_at else None
+            })
+            
+        return jsonify({'jobs': jobs_data})
+        
+    except Exception as e:
+        logging.error(f"Error getting all SAP jobs status: {str(e)}")
+        return jsonify({'error': str(e)}), 500
 
 
 @app.route('/serial_item_transfer/<int:transfer_id>/qc_approve', methods=['POST'])
