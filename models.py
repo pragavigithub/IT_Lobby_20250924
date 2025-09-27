@@ -126,7 +126,7 @@ class GRPODocument(db.Model):
     po_total = db.Column(db.Float, nullable=True)
     status = db.Column(
         db.String(20),
-        default='draft')  # draft, submitted, approved, posted, rejected
+        default='draft')  # draft, submitted, qc_approved, qc_pending_sync, posted, rejected
     user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
     qc_user_id = db.Column(db.Integer, db.ForeignKey('users.id'),
                         nullable=True)  # QC approver
@@ -660,7 +660,7 @@ class SerialNumberTransfer(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     transfer_number = db.Column(db.String(50), nullable=False, unique=True)
     sap_document_number = db.Column(db.String(50))
-    status = db.Column(db.String(20), default='draft')  # draft, submitted, qc_approved, posted, rejected
+    status = db.Column(db.String(20), default='draft')  # draft, submitted, qc_approved, qc_pending_sync, posted, rejected
     user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
     qc_approver_id = db.Column(db.Integer, db.ForeignKey('users.id'))
     qc_approved_at = db.Column(db.DateTime)
@@ -728,7 +728,7 @@ class SerialItemTransfer(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     transfer_number = db.Column(db.String(50), nullable=False, unique=True)
     sap_document_number = db.Column(db.String(50))
-    status = db.Column(db.String(20), default='draft')  # draft, submitted, qc_approved, posted, rejected
+    status = db.Column(db.String(20), default='draft')  # draft, submitted, qc_approved, qc_pending_sync, posted, rejected
     user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
     qc_approver_id = db.Column(db.Integer, db.ForeignKey('users.id'))
     qc_approved_at = db.Column(db.DateTime)
@@ -785,3 +785,42 @@ class SerialItemTransferItem(db.Model):
 # ================================
 # Note: SO Against Invoice models are imported automatically when module is registered
 # This prevents circular import issues and table redefinition conflicts
+
+
+# ================================
+# SAP Job Queue Models
+# ================================
+
+class SAPJob(db.Model):
+    """Background job queue for SAP B1 integration operations"""
+    __tablename__ = 'sap_jobs'
+    
+    id = db.Column(db.Integer, primary_key=True)
+    job_type = db.Column(db.String(50), nullable=False)  # 'grpo_post', 'serial_transfer', 'inventory_transfer'
+    document_type = db.Column(db.String(50), nullable=False)  # 'grpo', 'serial_item_transfer', 'serial_number_transfer'
+    document_id = db.Column(db.Integer, nullable=False)  # ID of the document to process
+    status = db.Column(db.String(20), default='pending')  # pending, processing, completed, failed, retrying
+    
+    # Job payload and results
+    payload = db.Column(db.Text)  # JSON payload for the job
+    result = db.Column(db.Text)  # JSON result from SAP
+    error_message = db.Column(db.Text)  # Error details if job fails
+    sap_document_number = db.Column(db.String(50))  # SAP document number if successful
+    
+    # Retry logic
+    retry_count = db.Column(db.Integer, default=0)
+    max_retries = db.Column(db.Integer, default=3)
+    next_retry_at = db.Column(db.DateTime)
+    
+    # Tracking fields
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)  # User who triggered the job
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    started_at = db.Column(db.DateTime)  # When job processing started
+    completed_at = db.Column(db.DateTime)  # When job completed/failed
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    
+    # Relationships
+    user = db.relationship('User', foreign_keys=[user_id])
+    
+    def __repr__(self):
+        return f'<SAPJob {self.id}: {self.job_type} for {self.document_type}#{self.document_id}>'
