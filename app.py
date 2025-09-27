@@ -254,3 +254,8 @@ with app.app_context():
 # Import routes
 import routes
 
+# Start SAP job worker
+from sap_job_worker import start_sap_worker
+start_sap_worker()
+logging.info("✅ SAP Job Worker started")
+
