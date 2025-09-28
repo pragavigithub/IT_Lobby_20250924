@@ -10,6 +10,22 @@ I prefer iterative development with clear, modular code. Please ask before makin
 The application is built with Flask, utilizing HTML templates with Bootstrap for the frontend. PostgreSQL is used as the primary database, managed by Replit. Authentication is handled via Flask-Login. The system integrates with SAP Business One through a dedicated API. Credentials for SAP B1 and database connections are managed via a JSON file (`C:/tmp/sap_login/credential.json` or `/tmp/sap_login/credential.json`), with environment variables as a fallback. The application is production-ready, configured to run on Gunicorn, and includes file-based logging. Key modules include Inventory Transfer, Serial Item Transfer, Invoice Creation, GRPO, and SO Against Invoice. The UI/UX prioritizes clear, functional design with Bootstrap components.
 
 ## Recent Changes
+**September 28, 2025**: Fixed critical QC Dashboard and Serial Number validation issues
+- ✅ **QC Dashboard Issue Fixed**: Resolved problem where page refresh would cancel approval processes
+  - Implemented idempotent approval endpoints with atomic database transactions
+  - Added status-based action control - documents show "In Progress" state that persists across refreshes
+  - Added missing GRPO section to QC Dashboard with proper status handling
+  - Used SELECT FOR UPDATE locking to prevent race conditions in approval workflow
+- ✅ **Serial Number Validation Issue Fixed**: Resolved logging errors and performance problems
+  - Fixed TimedRotatingFileHandler error by switching to RotatingFileHandler (prevents Windows file locking)
+  - Optimized batch validation performance - reduced logging frequency from every 100 to every 1000 serials
+  - Added API throttling (100ms pause every 50 serials) to prevent SAP API overload
+  - Added individual error handling to prevent entire batch failures
+- ✅ **System Stability Improvements**: Enhanced error handling and logging reliability
+  - Graceful fallback to console logging if file logging fails
+  - Improved validation performance for large serial number batches (15,000+ items)
+  - Reduced logging overhead during intensive operations
+
 **September 27, 2025**: Successfully imported and configured for Replit environment
 - ✅ Created and configured PostgreSQL database connection with Replit's managed database
 - ✅ Verified all environment variables (SESSION_SECRET, DATABASE_URL) are properly set
