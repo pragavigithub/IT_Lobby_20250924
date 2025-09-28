@@ -591,18 +591,8 @@ function submitApproval() {
             // Close modal
             bootstrap.Modal.getInstance(document.getElementById('approvalModal')).hide();
             
-            // Update button text to show "In Progress"
-            const approveButton = document.querySelector(`button[onclick*="${currentApprovalAction.split('/').slice(-2, -1)[0]}"]`);
-            if (approveButton) {
-                approveButton.innerHTML = '<i data-feather="clock"></i> In Progress';
-                approveButton.disabled = true;
-                approveButton.classList.remove('btn-success');
-                approveButton.classList.add('btn-warning');
-                feather.replace();
-            }
-            
-            // Refresh page after showing status
-            setTimeout(() => location.reload(), 2000);
+            // Update the entire row to show "In Progress" status
+            updateRowToInProgress(currentApprovalAction, data);
         } else {
             showAlert(`Error: ${data.error}`, 'error');
             // Reset button
@@ -651,7 +641,7 @@ function submitRejection() {
     .then(data => {
         if (data.success) {
             showAlert(`Success: ${data.message}`, 'success');
-            // Close modal and refresh page
+            // Close modal and refresh page for rejections (rejections are final)
             bootstrap.Modal.getInstance(document.getElementById('rejectionModal')).hide();
             setTimeout(() => location.reload(), 1000);
         } else {
@@ -813,6 +803,60 @@ function showAlert(message, type) {
 // Refresh data function
 function refreshData() {
     location.reload();
+}
+
+// Update row to show In Progress status
+function updateRowToInProgress(actionUrl, responseData) {
+    // Extract document ID from the action URL
+    const urlParts = actionUrl.split('/');
+    let documentId, documentType;
+    
+    if (actionUrl.includes('/grpo/')) {
+        documentId = urlParts[urlParts.indexOf('grpo') + 1];
+        documentType = 'grpo';
+    } else if (actionUrl.includes('/serial-item-transfer/')) {
+        documentId = urlParts[urlParts.indexOf('serial-item-transfer') + 1];
+        documentType = 'serial-item-transfer';
+    } else if (actionUrl.includes('/inventory_transfer/')) {
+        documentId = urlParts[urlParts.indexOf('inventory_transfer') + 1];
+        documentType = 'inventory-transfer';
+    }
+    
+    if (!documentId || !documentType) return;
+    
+    // Find the correct approve button based on document ID and type
+    let approveButton;
+    if (documentType === 'grpo') {
+        approveButton = document.getElementById(`approve-grpo-${documentId}`);
+    } else if (documentType === 'serial-item-transfer') {
+        approveButton = document.getElementById(`approve-item-${documentId}`);
+    } else if (documentType === 'inventory-transfer') {
+        approveButton = document.getElementById(`approve-serial-${documentId}`);
+    }
+    
+    if (!approveButton) return;
+    
+    // Find the parent row and update the actions column
+    const row = approveButton.closest('tr');
+    if (!row) return;
+    
+    // Find the actions cell (usually the last td)
+    const actionsCell = row.querySelector('td:last-child');
+    if (!actionsCell) return;
+    
+    // Replace the actions with "In Progress" status
+    actionsCell.innerHTML = `
+        <div class="d-flex align-items-center">
+            <div class="spinner-border spinner-border-sm text-warning me-2" role="status">
+                <span class="visually-hidden">Processing...</span>
+            </div>
+            <span class="badge bg-warning">In Progress</span>
+            ${responseData.job_id ? `<small class="text-muted ms-2">Job #${responseData.job_id}</small>` : ''}
+        </div>
+    `;
+    
+    // Re-initialize feather icons if needed
+    feather.replace();
 }
 
 // Transfer approval functions

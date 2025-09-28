@@ -13,7 +13,7 @@ from datetime import datetime, timedelta
 from typing import Optional
 
 from app import app, db
-from models import SAPJob, GRPODocument, SerialItemTransfer
+from models import SAPJob, GRPODocument, SerialItemTransfer, InventoryTransfer
 from sap_integration import SAPIntegration
 
 
@@ -112,6 +112,8 @@ class SAPJobWorker:
                 self._process_grpo_job(job)
             elif job.job_type == 'serial_transfer':
                 self._process_serial_transfer_job(job)
+            elif job.job_type == 'inventory_transfer_post':
+                self._process_inventory_transfer_job(job)
             else:
                 raise ValueError(f"Unknown job type: {job.job_type}")
                 
@@ -194,6 +196,43 @@ class SAPJobWorker:
             error_msg = sap_result.get('error', 'Unknown SAP error')
             raise Exception(f"SAP posting failed: {error_msg}")
             
+    def _process_inventory_transfer_job(self, job: SAPJob):
+        """Process an Inventory Transfer posting job"""
+        payload = json.loads(job.payload)
+        transfer_id = payload['transfer_id']
+        
+        # Get the transfer document
+        transfer = InventoryTransfer.query.get(transfer_id)
+        if not transfer:
+            raise ValueError(f"Inventory Transfer {transfer_id} not found")
+            
+        logging.info(f"📦 Posting Inventory Transfer {transfer_id} to SAP B1...")
+        
+        # Post to SAP B1
+        sap_result = self.sap.post_inventory_transfer_to_sap(transfer)
+        
+        if sap_result.get('success'):
+            # Success - update both job and document
+            sap_doc_number = sap_result.get('document_number')
+            
+            transfer.sap_document_number = sap_doc_number
+            transfer.status = 'posted'
+            transfer.updated_at = datetime.utcnow()
+            
+            job.status = 'completed'
+            job.completed_at = datetime.utcnow()
+            job.sap_document_number = sap_doc_number
+            job.result = json.dumps(sap_result)
+            
+            db.session.commit()
+            
+            logging.info(f"✅ Inventory Transfer {transfer_id} posted to SAP B1 as {sap_doc_number}")
+            
+        else:
+            # SAP posting failed
+            error_msg = sap_result.get('error', 'Unknown SAP error')
+            raise Exception(f"SAP posting failed: {error_msg}")
+            
     def _handle_job_retry(self, job: SAPJob, error_message: str):
         """Handle job retry logic"""
         job.retry_count += 1
@@ -226,6 +265,11 @@ class SAPJobWorker:
                 
         elif job.document_type == 'serial_item_transfer':
             transfer = SerialItemTransfer.query.get(job.document_id)
+            if transfer:
+                transfer.status = 'qc_approved'  # Keep as approved but not posted
+                
+        elif job.document_type == 'inventory_transfer':
+            transfer = InventoryTransfer.query.get(job.document_id)
             if transfer:
                 transfer.status = 'qc_approved'  # Keep as approved but not posted
                 
