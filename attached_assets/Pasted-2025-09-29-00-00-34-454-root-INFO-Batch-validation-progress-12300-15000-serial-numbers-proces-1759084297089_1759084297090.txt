@@ -1,0 +1,109 @@
+2025-09-29 00:00:34,454 - root - INFO - Batch validation progress: 12300/15000 serial numbers processed
+--- Logging error ---
+Traceback (most recent call last):
+  File "C:\Users\LENOVO\AppData\Local\Programs\Python\Python311\Lib\logging\handlers.py", line 74, in emit
+    self.doRollover()
+  File "C:\Users\LENOVO\AppData\Local\Programs\Python\Python311\Lib\logging\handlers.py", line 443, in doRollover
+    self.rotate(self.baseFilename, dfn)
+  File "C:\Users\LENOVO\AppData\Local\Programs\Python\Python311\Lib\logging\handlers.py", line 115, in rotate
+    os.rename(source, dest)
+PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\tmp\\wms_logs\\wms.log' -> 'C:\\tmp\\wms_logs\\wms.log.2025-09-28'
+Call stack:
+  File "C:\Users\LENOVO\AppData\Local\Programs\Python\Python311\Lib\threading.py", line 1002, in _bootstrap
+    self._bootstrap_inner()
+  File "C:\Users\LENOVO\AppData\Local\Programs\Python\Python311\Lib\threading.py", line 1045, in _bootstrap_inner
+    self.run()
+  File "C:\Users\LENOVO\AppData\Local\Programs\Python\Python311\Lib\threading.py", line 982, in run
+    self._target(*self._args, **self._kwargs)
+  File "C:\Users\LENOVO\AppData\Local\Programs\Python\Python311\Lib\socketserver.py", line 691, in process_request_thread
+    self.finish_request(request, client_address)
+  File "C:\Users\LENOVO\AppData\Local\Programs\Python\Python311\Lib\socketserver.py", line 361, in finish_request
+    self.RequestHandlerClass(request, client_address, self)
+  File "C:\Users\LENOVO\AppData\Local\Programs\Python\Python311\Lib\socketserver.py", line 755, in __init__
+    self.handle()
+  File "C:\Users\LENOVO\AppData\Local\Programs\Python\Python311\Lib\site-packages\werkzeug\serving.py", line 390, in handle
+    super().handle()
+  File "C:\Users\LENOVO\AppData\Local\Programs\Python\Python311\Lib\http\server.py", line 436, in handle
+    self.handle_one_request()
+  File "C:\Users\LENOVO\AppData\Local\Programs\Python\Python311\Lib\http\server.py", line 424, in handle_one_request
+    method()
+  File "C:\Users\LENOVO\AppData\Local\Programs\Python\Python311\Lib\site-packages\werkzeug\serving.py", line 362, in run_wsgi
+    execute(self.server.app)
+  File "C:\Users\LENOVO\AppData\Local\Programs\Python\Python311\Lib\site-packages\werkzeug\serving.py", line 325, in execute
+    for data in application_iter:
+  File "C:\Users\LENOVO\AppData\Local\Programs\Python\Python311\Lib\site-packages\werkzeug\debug\__init__.py", line 330, in debug_application
+    app_iter = self.app(environ, start_response)
+  File "C:\Users\LENOVO\AppData\Local\Programs\Python\Python311\Lib\site-packages\flask\app.py", line 1478, in __call__
+    return self.wsgi_app(environ, start_response)
+  File "C:\Users\LENOVO\AppData\Local\Programs\Python\Python311\Lib\site-packages\werkzeug\middleware\proxy_fix.py", line 182, in __call__
+    return self.app(environ, start_response)
+  File "C:\Users\LENOVO\AppData\Local\Programs\Python\Python311\Lib\site-packages\flask\app.py", line 1455, in wsgi_app
+    response = self.full_dispatch_request()
+  File "C:\Users\LENOVO\AppData\Local\Programs\Python\Python311\Lib\site-packages\flask\app.py", line 867, in full_dispatch_request
+    rv = self.dispatch_request()
+  File "C:\Users\LENOVO\AppData\Local\Programs\Python\Python311\Lib\site-packages\flask\app.py", line 852, in dispatch_request
+    return self.ensure_sync(self.view_functions[rule.endpoint])(**view_args)
+  File "C:\Users\LENOVO\AppData\Local\Programs\Python\Python311\Lib\site-packages\flask_login\utils.py", line 290, in decorated_view
+    return current_app.ensure_sync(func)(*args, **kwargs)
+  File "E:\SAP_Integ\Git Change\20250928\4\IT_Lobby_20250924\modules\inventory_transfer\routes.py", line 1763, in pre_validate_serials_api
+    batch_results = validate_batch_series_with_warehouse_sap(serials_to_validate, item_code, warehouse_code)
+  File "E:\SAP_Integ\Git Change\20250928\4\IT_Lobby_20250924\modules\inventory_transfer\routes.py", line 1551, in validate_batch_series_with_warehouse_sap
+    batch_results = sap.validate_batch_series_with_warehouse(
+  File "E:\SAP_Integ\Git Change\20250928\4\IT_Lobby_20250924\sap_integration.py", line 2640, in validate_batch_series_with_warehouse
+    logging.info(f"Batch validation progress: {processed}/{total_serials} serial numbers processed")
+Message: 'Batch validation progress: 12300/15000 serial numbers processed'
+Arguments: ()
+2025-09-29 00:00:36,437 - root - INFO - Batch validation progress: 12400/15000 serial numbers processed
+--- Logging error ---
+Traceback (most recent call last):
+  File "C:\Users\LENOVO\AppData\Local\Programs\Python\Python311\Lib\logging\handlers.py", line 74, in emit
+    self.doRollover()
+  File "C:\Users\LENOVO\AppData\Local\Programs\Python\Python311\Lib\logging\handlers.py", line 443, in doRollover
+    self.rotate(self.baseFilename, dfn)
+  File "C:\Users\LENOVO\AppData\Local\Programs\Python\Python311\Lib\logging\handlers.py", line 115, in rotate
+    os.rename(source, dest)
+PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\tmp\\wms_logs\\wms.log' -> 'C:\\tmp\\wms_logs\\wms.log.2025-09-28'
+Call stack:
+  File "C:\Users\LENOVO\AppData\Local\Programs\Python\Python311\Lib\threading.py", line 1002, in _bootstrap
+    self._bootstrap_inner()
+  File "C:\Users\LENOVO\AppData\Local\Programs\Python\Python311\Lib\threading.py", line 1045, in _bootstrap_inner
+    self.run()
+  File "C:\Users\LENOVO\AppData\Local\Programs\Python\Python311\Lib\threading.py", line 982, in run
+    self._target(*self._args, **self._kwargs)
+  File "C:\Users\LENOVO\AppData\Local\Programs\Python\Python311\Lib\socketserver.py", line 691, in process_request_thread
+    self.finish_request(request, client_address)
+  File "C:\Users\LENOVO\AppData\Local\Programs\Python\Python311\Lib\socketserver.py", line 361, in finish_request
+    self.RequestHandlerClass(request, client_address, self)
+  File "C:\Users\LENOVO\AppData\Local\Programs\Python\Python311\Lib\socketserver.py", line 755, in __init__
+    self.handle()
+  File "C:\Users\LENOVO\AppData\Local\Programs\Python\Python311\Lib\site-packages\werkzeug\serving.py", line 390, in handle
+    super().handle()
+  File "C:\Users\LENOVO\AppData\Local\Programs\Python\Python311\Lib\http\server.py", line 436, in handle
+    self.handle_one_request()
+  File "C:\Users\LENOVO\AppData\Local\Programs\Python\Python311\Lib\http\server.py", line 424, in handle_one_request
+    method()
+  File "C:\Users\LENOVO\AppData\Local\Programs\Python\Python311\Lib\site-packages\werkzeug\serving.py", line 362, in run_wsgi
+    execute(self.server.app)
+  File "C:\Users\LENOVO\AppData\Local\Programs\Python\Python311\Lib\site-packages\werkzeug\serving.py", line 325, in execute
+    for data in application_iter:
+  File "C:\Users\LENOVO\AppData\Local\Programs\Python\Python311\Lib\site-packages\werkzeug\debug\__init__.py", line 330, in debug_application
+    app_iter = self.app(environ, start_response)
+  File "C:\Users\LENOVO\AppData\Local\Programs\Python\Python311\Lib\site-packages\flask\app.py", line 1478, in __call__
+    return self.wsgi_app(environ, start_response)
+  File "C:\Users\LENOVO\AppData\Local\Programs\Python\Python311\Lib\site-packages\werkzeug\middleware\proxy_fix.py", line 182, in __call__
+    return self.app(environ, start_response)
+  File "C:\Users\LENOVO\AppData\Local\Programs\Python\Python311\Lib\site-packages\flask\app.py", line 1455, in wsgi_app
+    response = self.full_dispatch_request()
+  File "C:\Users\LENOVO\AppData\Local\Programs\Python\Python311\Lib\site-packages\flask\app.py", line 867, in full_dispatch_request
+    rv = self.dispatch_request()
+  File "C:\Users\LENOVO\AppData\Local\Programs\Python\Python311\Lib\site-packages\flask\app.py", line 852, in dispatch_request
+    return self.ensure_sync(self.view_functions[rule.endpoint])(**view_args)
+  File "C:\Users\LENOVO\AppData\Local\Programs\Python\Python311\Lib\site-packages\flask_login\utils.py", line 290, in decorated_view
+    return current_app.ensure_sync(func)(*args, **kwargs)
+  File "E:\SAP_Integ\Git Change\20250928\4\IT_Lobby_20250924\modules\inventory_transfer\routes.py", line 1763, in pre_validate_serials_api
+    batch_results = validate_batch_series_with_warehouse_sap(serials_to_validate, item_code, warehouse_code)
+  File "E:\SAP_Integ\Git Change\20250928\4\IT_Lobby_20250924\modules\inventory_transfer\routes.py", line 1551, in validate_batch_series_with_warehouse_sap
+    batch_results = sap.validate_batch_series_with_warehouse(
+  File "E:\SAP_Integ\Git Change\20250928\4\IT_Lobby_20250924\sap_integration.py", line 2640, in validate_batch_series_with_warehouse
+    logging.info(f"Batch validation progress: {processed}/{total_serials} serial numbers processed")
+Message: 'Batch validation progress: 12400/15000 serial numbers processed'

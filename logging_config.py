@@ -50,37 +50,49 @@ def setup_logging(app):
         console_handler.setFormatter(formatter)
         handlers.append(console_handler)
     
-    # File handler with timed rotation - daily log files with date in filename
+    # File handler with size-based rotation to avoid file locking issues
     if LOG_TO_FILE:
-        # Use TimedRotatingFileHandler for daily rotation at midnight
+        # Use RotatingFileHandler instead of TimedRotatingFileHandler to avoid Windows file locking issues
         log_file = os.path.join(LOG_PATH, f'{LOG_FILE_PREFIX}.log')
-        file_handler = TimedRotatingFileHandler(
-            log_file,
-            when='midnight',
-            interval=1,
-            backupCount=LOG_BACKUP_COUNT,
-            encoding='utf-8'
-        )
-        # Set suffix to include date in filename
-        file_handler.suffix = '%Y-%m-%d'
-        file_handler.setLevel(log_level)
-        file_handler.setFormatter(formatter)
-        handlers.append(file_handler)
         
-        # Error log file with timed rotation
+        # Try to use the log file, but fall back gracefully if there are permission issues
+        try:
+            file_handler = RotatingFileHandler(
+                log_file,
+                maxBytes=LOG_MAX_SIZE,
+                backupCount=LOG_BACKUP_COUNT,
+                encoding='utf-8'
+            )
+            file_handler.setLevel(log_level)
+            file_handler.setFormatter(formatter)
+            handlers.append(file_handler)
+            
+        except (OSError, PermissionError) as e:
+            # If we can't write to the main log file, fall back to console only
+            print(f"Warning: Could not set up file logging due to permission error: {e}. Using console logging only.")
+            if not LOG_TO_CONSOLE:
+                # Ensure console logging is enabled if file logging fails
+                console_handler = logging.StreamHandler()
+                console_handler.setLevel(log_level)
+                console_handler.setFormatter(formatter)
+                handlers.append(console_handler)
+        
+        # Error log file with size-based rotation
         error_log_file = os.path.join(LOG_PATH, f'{LOG_FILE_PREFIX}_error.log')
-        error_handler = TimedRotatingFileHandler(
-            error_log_file,
-            when='midnight',
-            interval=1,
-            backupCount=LOG_BACKUP_COUNT,
-            encoding='utf-8'
-        )
-        # Set suffix to include date in filename
-        error_handler.suffix = '%Y-%m-%d'
-        error_handler.setLevel(logging.ERROR)
-        error_handler.setFormatter(formatter)
-        handlers.append(error_handler)
+        try:
+            error_handler = RotatingFileHandler(
+                error_log_file,
+                maxBytes=LOG_MAX_SIZE,
+                backupCount=LOG_BACKUP_COUNT,
+                encoding='utf-8'
+            )
+            error_handler.setLevel(logging.ERROR)
+            error_handler.setFormatter(formatter)
+            handlers.append(error_handler)
+            
+        except (OSError, PermissionError) as e:
+            # Error file logging failed, but we'll continue with other handlers
+            print(f"Warning: Could not set up error file logging: {e}")
     
     # Add all handlers
     for handler in handlers:
@@ -95,7 +107,7 @@ def setup_logging(app):
     # Log startup message
     logging.info(f"Logging initialized - Level: {LOG_LEVEL}, Path: {LOG_PATH}")
     if LOG_TO_FILE:
-        logging.info(f"Daily log files: {LOG_PATH}/{LOG_FILE_PREFIX}.log and {LOG_PATH}/{LOG_FILE_PREFIX}_error.log (rotates daily at midnight with date suffix)")
+        logging.info(f"Size-based rotating log files: {LOG_PATH}/{LOG_FILE_PREFIX}.log and {LOG_PATH}/{LOG_FILE_PREFIX}_error.log (rotates when reaching {LOG_MAX_SIZE} bytes)")
     
     return logging.getLogger(__name__)
 

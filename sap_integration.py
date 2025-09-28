@@ -2634,10 +2634,12 @@ class SAPIntegration:
                 batch_results = self._validate_batch_chunk(batch, item_code, warehouse_code)
                 results.update(batch_results)
 
-                # Log progress for large batches
-                if total_serials > 100:
+                # Log progress for very large batches only, and less frequently to avoid logging spam
+                if total_serials > 1000:
                     processed = min(i + batch_size, total_serials)
-                    logging.info(f"Batch validation progress: {processed}/{total_serials} serial numbers processed")
+                    # Only log every 10th batch (every 1000 serials) to reduce logging overhead
+                    if processed % 1000 == 0 or processed == total_serials:
+                        logging.info(f"Batch validation progress: {processed}/{total_serials} serial numbers processed")
 
             logging.info(f"Completed batch validation for {total_serials} serial numbers")
             return results
@@ -2663,10 +2665,25 @@ class SAPIntegration:
         try:
             # For now, validate each serial individually using the single validation method
             # This ensures consistency with the single validation logic but may be slower
-            for serial_number in serial_batch:
-                # Use individual validation to avoid infinite recursion
-                individual_result = self._validate_single_series(serial_number, item_code, warehouse_code)
-                results[serial_number] = individual_result
+            for i, serial_number in enumerate(serial_batch):
+                try:
+                    # Use individual validation to avoid infinite recursion
+                    individual_result = self._validate_single_series(serial_number, item_code, warehouse_code)
+                    results[serial_number] = individual_result
+                    
+                    # Brief pause every 50 serials to prevent overwhelming the SAP API
+                    if i > 0 and i % 50 == 0:
+                        import time
+                        time.sleep(0.1)  # 100ms pause
+                        
+                except Exception as serial_error:
+                    # If individual serial validation fails, mark it as error but continue with others
+                    logging.warning(f"Failed to validate serial {serial_number}: {str(serial_error)}")
+                    results[serial_number] = {
+                        'valid': False,
+                        'error': f'Validation error: {str(serial_error)}',
+                        'validation_type': 'individual_validation_failed'
+                    }
 
             return results
 
