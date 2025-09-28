@@ -1687,6 +1687,11 @@ def pre_validate_serials_api():
         serial_numbers_text = request.form.get('serial_numbers', '').strip()
         warehouse_code = request.form.get('warehouse_code', '').strip()
         
+        # New parameters for incremental validation optimization
+        incremental_validation = request.form.get('incremental_validation', 'false').lower() == 'true'
+        previous_results_json = request.form.get('previous_results', '')
+        all_serials_text = request.form.get('all_serials', '')
+        
         if not all([item_code, expected_quantity, serial_numbers_text]):
             return jsonify({
                 'success': False,
@@ -1726,50 +1731,82 @@ def pre_validate_serials_api():
                 duplicates.append(sn)
             serial_number_count[sn] = serial_number_count.get(sn, 0) + 1
         
-        # Validate each serial number against SAP
+        # Handle incremental validation optimization
         validation_results = {}
-        valid_count = 0
-        invalid_count = 0
         
-        logging.info(f"Pre-validating {len(serial_numbers)} serial numbers for item {item_code}")
+        if incremental_validation and previous_results_json:
+            # Parse previous validation results
+            import json
+            try:
+                previous_results = json.loads(previous_results_json)
+                validation_results.update(previous_results)
+                logging.info(f"⚡ Incremental validation: loaded {len(previous_results)} previous results")
+            except json.JSONDecodeError:
+                logging.warning("Failed to parse previous results, falling back to full validation")
+                incremental_validation = False
         
-        # Use batch validation for better performance
-        if len(serial_numbers) > 10:
-            # Use batch validation for large sets
-            batch_results = validate_batch_series_with_warehouse_sap(serial_numbers, item_code, warehouse_code)
-            for serial, result in batch_results.items():
-                validation_results[serial] = result
-                if result.get('valid'):
-                    valid_count += 1
-                else:
-                    invalid_count += 1
+        # Determine which serials to validate
+        serials_to_validate = serial_numbers
+        
+        if incremental_validation:
+            # Only validate new serials that aren't in previous results
+            serials_to_validate = [sn for sn in serial_numbers if sn not in validation_results]
+            logging.info(f"⚡ Optimized validation: validating only {len(serials_to_validate)} new serials instead of all {len(serial_numbers)}")
         else:
-            # Use individual validation for small sets
-            for serial_number in serial_numbers:
-                if serial_number in duplicates:
-                    validation_results[serial_number] = {
-                        'valid': False,
-                        'error': 'Duplicate serial number in input',
-                        'validation_type': 'duplicate'
-                    }
-                    invalid_count += 1
-                else:
-                    result = validate_series_with_warehouse_sap(serial_number, item_code, warehouse_code)
-                    validation_results[serial_number] = result
-                    if result.get('valid'):
-                        valid_count += 1
+            logging.info(f"📋 Full validation: validating all {len(serial_numbers)} serial numbers")
+        
+        # Validate new serial numbers against SAP
+        if serials_to_validate:
+            # Use batch validation for better performance
+            if len(serials_to_validate) > 10:
+                # Use batch validation for large sets
+                batch_results = validate_batch_series_with_warehouse_sap(serials_to_validate, item_code, warehouse_code)
+                for serial, result in batch_results.items():
+                    validation_results[serial] = result
+            else:
+                # Use individual validation for small sets
+                for serial_number in serials_to_validate:
+                    if serial_number in duplicates:
+                        validation_results[serial_number] = {
+                            'valid': False,
+                            'error': 'Duplicate serial number in input',
+                            'validation_type': 'duplicate'
+                        }
                     else:
-                        invalid_count += 1
+                        result = validate_series_with_warehouse_sap(serial_number, item_code, warehouse_code)
+                        validation_results[serial_number] = result
+        
+        # If this is incremental validation, we need to consider all current serials for final summary
+        if incremental_validation and all_serials_text:
+            # Parse all current serials to get the complete picture
+            import re
+            all_current_serials = re.split(r'[,\n\r\s]+', all_serials_text.strip())
+            all_current_serials = [sn.strip() for sn in all_current_serials if sn.strip()]
+            
+            # Filter validation results to only include current serials (removes deleted ones)
+            filtered_validation_results = {}
+            for serial in all_current_serials:
+                if serial in validation_results:
+                    filtered_validation_results[serial] = validation_results[serial]
+            
+            validation_results = filtered_validation_results
+        
+        # Count valid and invalid results
+        valid_count = sum(1 for result in validation_results.values() if result.get('valid'))
+        invalid_count = len(validation_results) - valid_count
         
         # Check quantity matching
         quantity_match = valid_count == expected_qty
         quantity_status = 'exact' if quantity_match else ('excess' if valid_count > expected_qty else 'insufficient')
         
+        # Calculate total serials for summary (use all current serials for incremental validation)
+        total_serials_count = len(validation_results) if incremental_validation and all_serials_text else len(serial_numbers)
+        
         # Prepare response
         response_data = {
             'success': True,
             'validation_summary': {
-                'total_serials': len(serial_numbers),
+                'total_serials': total_serials_count,
                 'valid_count': valid_count,
                 'invalid_count': invalid_count,
                 'expected_quantity': expected_qty,
@@ -1779,20 +1816,29 @@ def pre_validate_serials_api():
             },
             'validation_results': validation_results,
             'duplicates': duplicates,
-            'can_proceed': quantity_match  # Only allow proceeding if quantity matches exactly
+            'can_proceed': quantity_match,  # Only allow proceeding if quantity matches exactly
+            'incremental_validation': incremental_validation,
+            'serials_validated_this_request': len(serials_to_validate) if serials_to_validate else 0
         }
         
-        # Add appropriate message
+        # Add appropriate message with optimization info
+        optimization_info = ""
+        if incremental_validation and serials_to_validate:
+            optimization_info = f" (⚡ Optimized: validated only {len(serials_to_validate)} new serials)"
+        
         if quantity_match:
-            response_data['message'] = f'Validation successful! All {valid_count} serial numbers are valid and match expected quantity.'
+            response_data['message'] = f'Validation successful! All {valid_count} serial numbers are valid and match expected quantity.{optimization_info}'
         elif valid_count > expected_qty:
             excess = valid_count - expected_qty
-            response_data['message'] = f'Too many valid serials! Found {valid_count} valid serials but expected {expected_qty}. Please remove {excess} serial number(s).'
+            response_data['message'] = f'Too many valid serials! Found {valid_count} valid serials but expected {expected_qty}. Please remove {excess} serial number(s).{optimization_info}'
         else:
             missing = expected_qty - valid_count
-            response_data['message'] = f'Insufficient valid serials! Found {valid_count} valid serials but expected {expected_qty}. You need {missing} more valid serial number(s).'
+            response_data['message'] = f'Insufficient valid serials! Found {valid_count} valid serials but expected {expected_qty}. You need {missing} more valid serial number(s).{optimization_info}'
         
-        logging.info(f"Pre-validation complete: {valid_count}/{len(serial_numbers)} valid, quantity match: {quantity_match}")
+        if incremental_validation:
+            logging.info(f"⚡ Incremental validation complete: {valid_count}/{total_serials_count} valid, quantity match: {quantity_match}, validated {len(serials_to_validate)} new serials")
+        else:
+            logging.info(f"📋 Full validation complete: {valid_count}/{total_serials_count} valid, quantity match: {quantity_match}")
         
         return jsonify(response_data)
         

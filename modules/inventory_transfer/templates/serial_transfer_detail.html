@@ -516,7 +516,9 @@ Serial Number Transfer {{ transfer.transfer_number }}
         if (quantityMismatchWarning) quantityMismatchWarning.style.display = 'none';
 
         // Reset validation state
-        validatedSerials = [];
+        validatedSerials = null;
+        previouslyValidatedSerials.clear();
+        lastValidatedText = '';
 
         // Get or create modal instance
         const modalElement = document.getElementById('addItemModal');
@@ -558,8 +560,10 @@ Serial Number Transfer {{ transfer.transfer_number }}
         modal.show();
     }
 
-    // Global variable to store validation results
+    // Global variables to store validation results and track state
     let validatedSerials = null;
+    let previouslyValidatedSerials = new Set(); // Track serials that have been validated before
+    let lastValidatedText = ''; // Track the last validated text to detect changes
 
     function validateSerials() {
         const itemCode = document.getElementById('item_code').value.trim();
@@ -573,20 +577,82 @@ Serial Number Transfer {{ transfer.transfer_number }}
             return;
         }
 
+        // Parse current serial numbers
+        const currentSerials = parseSerialNumbers(serialNumbers);
+        
+        // Check if serial numbers have changed
+        const hasChanged = serialNumbers !== lastValidatedText;
+        
+        // Identify new serials that haven't been validated yet
+        const newSerials = currentSerials.filter(serial => !previouslyValidatedSerials.has(serial));
+        
         const validateBtn = document.getElementById('validateSerialsBtn');
         const addBtn = document.getElementById('addItemBtn');
         const validationResults = document.getElementById('validationResults');
 
+        // If no new serials and text hasn't changed significantly, use cached results
+        if (!hasChanged && newSerials.length === 0 && validatedSerials) {
+            console.log('⚡ Using cached validation results - no new serials to validate');
+            
+            // Re-evaluate quantity match with current expected quantity
+            const expectedQty = parseInt(quantity);
+            const validCount = Object.values(validatedSerials).filter(result => result.valid).length;
+            const quantityMatch = validCount === expectedQty;
+            
+            // Update the validation display
+            const mockData = {
+                success: true,
+                validation_summary: {
+                    total_serials: currentSerials.length,
+                    valid_count: validCount,
+                    invalid_count: currentSerials.length - validCount,
+                    expected_quantity: expectedQty,
+                    quantity_match: quantityMatch,
+                    quantity_status: quantityMatch ? 'exact' : (validCount > expectedQty ? 'excess' : 'insufficient'),
+                    duplicates_found: 0
+                },
+                validation_results: validatedSerials,
+                can_proceed: quantityMatch
+            };
+            
+            displayValidationResults(mockData);
+            
+            if (quantityMatch) {
+                addBtn.style.display = 'inline-block';
+                addBtn.disabled = false;
+            } else {
+                addBtn.style.display = 'none';
+            }
+            return;
+        }
+
         // Show loading state
         validateBtn.disabled = true;
-        validateBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Validating...';
+        if (newSerials.length < currentSerials.length) {
+            validateBtn.innerHTML = `<span class="spinner-border spinner-border-sm me-2"></span>Validating ${newSerials.length} new serial(s)...`;
+        } else {
+            validateBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Validating...';
+        }
 
-        // Prepare form data
+        // Prepare form data - only send new serials for validation if we have previous results
         const formData = new FormData();
         formData.append('item_code', itemCode);
         formData.append('expected_quantity', quantity);
-        formData.append('serial_numbers', serialNumbers);
+        
+        // Send only new serials if we have previous validation results, otherwise send all
+        if (newSerials.length > 0 && validatedSerials && Object.keys(validatedSerials).length > 0) {
+            formData.append('serial_numbers', newSerials.join('\n'));
+            formData.append('incremental_validation', 'true');
+            formData.append('previous_results', JSON.stringify(validatedSerials));
+            console.log(`⚡ Optimized validation: checking only ${newSerials.length} new serials instead of all ${currentSerials.length}`);
+        } else {
+            formData.append('serial_numbers', serialNumbers);
+            formData.append('incremental_validation', 'false');
+            console.log(`📋 Full validation: checking all ${currentSerials.length} serials`);
+        }
+        
         formData.append('warehouse_code', '{{ transfer.from_warehouse }}');
+        formData.append('all_serials', currentSerials.join('\n')); // Send all current serials for context
 
         fetch('/inventory_transfer/serial/pre-validate', {
             method: 'POST',
@@ -595,7 +661,56 @@ Serial Number Transfer {{ transfer.transfer_number }}
         .then(response => response.json())
         .then(data => {
             if (data.success) {
-                validatedSerials = data.validation_results;
+                // If this was incremental validation, merge with previous results
+                if (newSerials.length > 0 && validatedSerials && Object.keys(validatedSerials).length > 0) {
+                    // Merge new results with existing ones
+                    const mergedResults = { ...validatedSerials };
+                    Object.assign(mergedResults, data.validation_results);
+                    
+                    // Filter to only include current serials (remove any that were deleted)
+                    const filteredResults = {};
+                    currentSerials.forEach(serial => {
+                        if (mergedResults[serial]) {
+                            filteredResults[serial] = mergedResults[serial];
+                        }
+                    });
+                    
+                    validatedSerials = filteredResults;
+                    
+                    // Update the summary data to reflect merged results
+                    const validCount = Object.values(validatedSerials).filter(result => result.valid).length;
+                    const invalidCount = currentSerials.length - validCount;
+                    const expectedQty = parseInt(quantity);
+                    const quantityMatch = validCount === expectedQty;
+                    
+                    data.validation_summary = {
+                        total_serials: currentSerials.length,
+                        valid_count: validCount,
+                        invalid_count: invalidCount,
+                        expected_quantity: expectedQty,
+                        quantity_match: quantityMatch,
+                        quantity_status: quantityMatch ? 'exact' : (validCount > expectedQty ? 'excess' : 'insufficient'),
+                        duplicates_found: 0
+                    };
+                    data.validation_results = validatedSerials;
+                    data.can_proceed = quantityMatch;
+                    
+                    if (quantityMatch) {
+                        data.message = `Validation successful! All ${validCount} serial numbers are valid and match expected quantity.`;
+                    } else if (validCount > expectedQty) {
+                        const excess = validCount - expectedQty;
+                        data.message = `Too many valid serials! Found ${validCount} valid serials but expected ${expectedQty}. Please remove ${excess} serial number(s).`;
+                    } else {
+                        const missing = expectedQty - validCount;
+                        data.message = `Insufficient valid serials! Found ${validCount} valid serials but expected ${expectedQty}. You need ${missing} more valid serial number(s).`;
+                    }
+                } else {
+                    validatedSerials = data.validation_results;
+                }
+
+                // Update tracking
+                currentSerials.forEach(serial => previouslyValidatedSerials.add(serial));
+                lastValidatedText = serialNumbers;
 
                 // Show validation results
                 displayValidationResults(data);
@@ -609,14 +724,14 @@ Serial Number Transfer {{ transfer.transfer_number }}
                 }
             } else {
                 alert(`❌ Validation Error: ${data.error}`);
-                validatedSerials = [];
+                validatedSerials = null;
                 addBtn.style.display = 'none';
             }
         })
         .catch(error => {
             console.error('Validation Error:', error);
             alert('❌ Error during validation');
-            validatedSerials = [];
+            validatedSerials = null;
             addBtn.style.display = 'none';
             
             // Ensure cleanup on error
@@ -1509,10 +1624,11 @@ Serial Number Transfer {{ transfer.transfer_number }}
             return;
         }
 
-        // Remove from validation results
+        // Remove from validation results and tracking
         if (validatedSerials && validatedSerials[serialNumber]) {
             delete validatedSerials[serialNumber];
         }
+        previouslyValidatedSerials.delete(serialNumber);
 
         // Remove from textarea
         const textarea = document.getElementById('serial_numbers');
@@ -1581,12 +1697,13 @@ Serial Number Transfer {{ transfer.transfer_number }}
             serialNumbers = serialNumbers.filter(s => !invalidSerials.includes(s));
             textarea.value = serialNumbers.join('\n');
 
-            // Update validation results
+            // Update validation results and tracking
             if (validatedSerials) {
                 invalidSerials.forEach(serial => {
                     if (validatedSerials[serial]) {
                         delete validatedSerials[serial];
                     }
+                    previouslyValidatedSerials.delete(serial);
                 });
             }
 
