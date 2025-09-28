@@ -235,6 +235,99 @@
             </div>
         </div>
     </div>
+
+    <!-- In Progress Documents Section -->
+    <div class="row mt-4">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <h5 class="mb-0">
+                            <i data-feather="clock"></i>
+                            Documents Being Processed (In Progress)
+                        </h5>
+                        <div>
+                            <span class="badge bg-warning">{{ pending_sync_count or 0 }} documents</span>
+                            <button class="btn btn-outline-secondary btn-sm ms-2" onclick="refreshData()">
+                                <i data-feather="refresh-cw"></i> Refresh
+                            </button>
+                        </div>
+                    </div>
+                </div>
+                <div class="card-body">
+                    {% if pending_sap_jobs %}
+                    <div class="alert alert-info">
+                        <i data-feather="info"></i>
+                        <strong>Note:</strong> These documents have been approved and are currently being posted to SAP B1. 
+                        Page refreshes will not interrupt this process. The status will update automatically once SAP posting is complete.
+                    </div>
+                    <div class="table-responsive">
+                        <table class="table table-hover table-striped">
+                            <thead class="table-warning">
+                                <tr>
+                                    <th>Document Type</th>
+                                    <th>Document Number</th>
+                                    <th>Approved By</th>
+                                    <th>Approved At</th>
+                                    <th>Processing Status</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for job_info in pending_sap_jobs %}
+                                <tr>
+                                    <td>
+                                        <span class="badge bg-primary">{{ job_info.document_type }}</span>
+                                    </td>
+                                    <td><strong>{{ job_info.document_number }}</strong></td>
+                                    <td>
+                                        {% if job_info.document.qc_user %}
+                                            {{ job_info.document.qc_user.first_name }} {{ job_info.document.qc_user.last_name }}
+                                        {% else %}
+                                            N/A
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        {% if job_info.document.qc_approved_at %}
+                                            <small>{{ job_info.document.qc_approved_at.strftime('%Y-%m-%d %H:%M') }}</small>
+                                        {% else %}
+                                            N/A
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        <div class="d-flex align-items-center">
+                                            <div class="spinner-border spinner-border-sm text-warning me-2" role="status">
+                                                <span class="visually-hidden">Processing...</span>
+                                            </div>
+                                            <span class="badge bg-warning">In Progress</span>
+                                        </div>
+                                    </td>
+                                    <td>
+                                        {% if job_info.document_type == 'GRPO' %}
+                                            <a href="{{ url_for('grpo.detail', grpo_id=job_info.document.id) }}" class="btn btn-sm btn-outline-primary">
+                                                <i data-feather="eye"></i> View
+                                            </a>
+                                        {% elif job_info.document_type == 'Serial Item Transfer' %}
+                                            <a href="{{ url_for('serial_item_transfer.detail', transfer_id=job_info.document.id) }}" class="btn btn-sm btn-outline-primary">
+                                                <i data-feather="eye"></i> View
+                                            </a>
+                                        {% endif %}
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    {% else %}
+                    <div class="alert alert-success">
+                        <i data-feather="check-circle"></i>
+                        No documents are currently being processed. All approved documents have been successfully posted to SAP B1.
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
 </div>
 
 <!-- Approval Modal -->
@@ -368,9 +461,21 @@ function submitApproval() {
     .then(data => {
         if (data.success) {
             showAlert(`Success: ${data.message}`, 'success');
-            // Close modal and refresh page
+            // Close modal
             bootstrap.Modal.getInstance(document.getElementById('approvalModal')).hide();
-            setTimeout(() => location.reload(), 1000);
+            
+            // Update button text to show "In Progress"
+            const approveButton = document.querySelector(`button[onclick*="${currentApprovalAction.split('/').slice(-2, -1)[0]}"]`);
+            if (approveButton) {
+                approveButton.innerHTML = '<i data-feather="clock"></i> In Progress';
+                approveButton.disabled = true;
+                approveButton.classList.remove('btn-success');
+                approveButton.classList.add('btn-warning');
+                feather.replace();
+            }
+            
+            // Refresh page after showing status
+            setTimeout(() => location.reload(), 2000);
         } else {
             showAlert(`Error: ${data.error}`, 'error');
             // Reset button
@@ -444,7 +549,7 @@ function submitRejection() {
 function showSerialItemTransferApprovalModal(transferId, transferNumber) {
     // Reuse the existing approval modal but update the action and text
     document.getElementById('approvalPONumber').textContent = transferNumber;
-    currentApprovalAction = `/serial_item_transfer/${transferId}/qc_approve`;
+    currentApprovalAction = `/serial-item-transfer/${transferId}/approve`;
 
     // Update modal title for Serial Item Transfer
     document.querySelector('#approvalModal .modal-title').textContent = 'Approve Serial Item Transfer';
@@ -472,7 +577,7 @@ function showSerialItemTransferApprovalModal(transferId, transferNumber) {
 function showSerialItemTransferRejectionModal(transferId, transferNumber) {
     // Reuse the existing rejection modal but update the action and text
     document.getElementById('rejectionPONumber').textContent = transferNumber;
-    currentRejectionAction = `/serial_item_transfer/${transferId}/qc_reject`;
+    currentRejectionAction = `/serial-item-transfer/${transferId}/reject`;
 
     // Update modal title for Serial Item Transfer
     document.querySelector('#rejectionModal .modal-title').textContent = 'Reject Serial Item Transfer';
@@ -823,7 +928,7 @@ function showSerialItemTransferRejectionModal(transferId, transferNumber) {
     const reason = prompt(`Please enter the reason for rejecting serial item transfer ${transferNumber}:`);
     if (reason && reason.trim()) {
         // Make AJAX call to reject serial item transfer
-        fetch(`/serial_item_transfer/${transferId}/reject`, {
+        fetch(`/serial-item-transfer/${transferId}/reject`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/x-www-form-urlencoded',
