@@ -119,8 +119,41 @@ def approve(grpo_id):
         if not current_user.has_permission('qc_dashboard') and current_user.role not in ['admin', 'manager']:
             return jsonify({'success': False, 'error': 'QC permissions required'}), 403
         
-        if grpo.status != 'submitted':
+        # Check if GRPO is already being processed or completed
+        if grpo.status == 'qc_pending_sync':
+            # Already approved and in progress - return success (idempotent)
+            existing_job = SAPJob.query.filter_by(
+                document_type='grpo',
+                document_id=grpo.id,
+                status='pending'
+            ).first()
+            return jsonify({
+                'success': True,
+                'message': 'GRPO is already approved and being processed in the background.',
+                'status': 'qc_pending_sync',
+                'job_id': existing_job.id if existing_job else None,
+                'already_in_progress': True
+            })
+        elif grpo.status in ['posted', 'qc_approved']:
+            return jsonify({'success': False, 'error': 'GRPO has already been processed'}), 400
+        elif grpo.status != 'submitted':
             return jsonify({'success': False, 'error': 'Only submitted GRPOs can be approved'}), 400
+        
+        # Check for existing active SAP job for this document
+        existing_job = SAPJob.query.filter_by(
+            document_type='grpo',
+            document_id=grpo.id
+        ).filter(SAPJob.status.in_(['pending', 'processing', 'retrying'])).first()
+        
+        if existing_job:
+            # Job already exists - return success (idempotent)
+            return jsonify({
+                'success': True,
+                'message': 'GRPO approval is already in progress.',
+                'status': 'qc_pending_sync',
+                'job_id': existing_job.id,
+                'already_in_progress': True
+            })
         
         # Get QC notes
         qc_notes = ''
@@ -129,33 +162,73 @@ def approve(grpo_id):
         elif request.json:
             qc_notes = request.json.get('qc_notes', '')
         
-        # Mark items as approved
-        for item in grpo.items:
-            item.qc_status = 'approved'
-        
-        # Update GRPO status to pending SAP sync
-        grpo.status = 'qc_pending_sync'
-        grpo.qc_approver_id = current_user.id
-        grpo.qc_approved_at = datetime.utcnow()
-        grpo.qc_notes = qc_notes
-        grpo.updated_at = datetime.utcnow()
-        
-        # Create SAP job for background processing
-        sap_job = SAPJob(
-            job_type='grpo_post',
-            document_type='grpo',
-            document_id=grpo.id,
-            status='pending',
-            payload=json.dumps({
-                'grpo_id': grpo.id,
-                'user_id': current_user.id,
-                'qc_notes': qc_notes
-            }),
-            user_id=current_user.id
-        )
-        
-        db.session.add(sap_job)
-        db.session.commit()
+        # Atomic transaction: status update + job creation
+        try:
+            # Lock the document for update
+            grpo = db.session.query(GRPODocument).filter_by(id=grpo_id).with_for_update().first()
+            if not grpo:
+                return jsonify({'success': False, 'error': 'GRPO not found'}), 404
+            
+            # Double-check status and existing jobs inside transaction
+            if grpo.status != 'submitted':
+                db.session.rollback()
+                if grpo.status == 'qc_pending_sync':
+                    return jsonify({
+                        'success': True,
+                        'message': 'GRPO is already approved and being processed.',
+                        'status': 'qc_pending_sync',
+                        'already_in_progress': True
+                    })
+                return jsonify({'success': False, 'error': f'GRPO status is {grpo.status}, cannot approve'}), 400
+            
+            # Check for existing active job inside transaction
+            existing_job = SAPJob.query.filter_by(
+                document_type='grpo',
+                document_id=grpo.id
+            ).filter(SAPJob.status.in_(['pending', 'processing', 'retrying'])).first()
+            
+            if existing_job:
+                db.session.rollback()
+                return jsonify({
+                    'success': True,
+                    'message': 'GRPO approval is already in progress.',
+                    'status': 'qc_pending_sync',
+                    'job_id': existing_job.id,
+                    'already_in_progress': True
+                })
+            
+            # Mark items as approved
+            for item in grpo.items:
+                item.qc_status = 'approved'
+            
+            # Update GRPO status to pending SAP sync
+            grpo.status = 'qc_pending_sync'
+            grpo.qc_approver_id = current_user.id
+            grpo.qc_approved_at = datetime.utcnow()
+            grpo.qc_notes = qc_notes
+            grpo.updated_at = datetime.utcnow()
+            
+            # Create SAP job for background processing
+            sap_job = SAPJob(
+                job_type='grpo_post',
+                document_type='grpo',
+                document_id=grpo.id,
+                status='pending',
+                payload=json.dumps({
+                    'grpo_id': grpo.id,
+                    'user_id': current_user.id,
+                    'qc_notes': qc_notes
+                }),
+                user_id=current_user.id
+            )
+            
+            db.session.add(sap_job)
+            db.session.commit()
+            
+        except Exception as e:
+            db.session.rollback()
+            logging.error(f"Error in atomic approval transaction: {str(e)}")
+            raise
         
         logging.info(f"✅ GRPO {grpo_id} QC approved and queued for SAP B1 posting (Job #{sap_job.id})")
         

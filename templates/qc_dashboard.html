@@ -111,6 +111,7 @@
                                         <small>{{ transfer.created_at.strftime('%Y-%m-%d %H:%M') }}</small>
                                     </td>
                                     <td>
+                                        {% if transfer.status == 'submitted' %}
                                         <div class="btn-group" role="group">
                                             <a href="{{ url_for('inventory_transfer.serial_detail', transfer_id=transfer.id) }}" class="btn btn-sm btn-outline-primary">
                                                 <i data-feather="eye"></i> Review
@@ -122,6 +123,16 @@
                                                 <i data-feather="x"></i> Reject
                                             </button>
                                         </div>
+                                        {% elif transfer.status == 'qc_pending_sync' %}
+                                        <div class="d-flex align-items-center">
+                                            <div class="spinner-border spinner-border-sm text-warning me-2" role="status">
+                                                <span class="visually-hidden">Processing...</span>
+                                            </div>
+                                            <span class="badge bg-warning">In Progress</span>
+                                        </div>
+                                        {% else %}
+                                        <span class="badge bg-secondary">{{ transfer.status|title }}</span>
+                                        {% endif %}
                                     </td>
                                 </tr>
                                 {% endfor %}
@@ -208,6 +219,7 @@
                                         <small>{{ transfer.created_at.strftime('%Y-%m-%d %H:%M') }}</small>
                                     </td>
                                     <td>
+                                        {% if transfer.status == 'submitted' %}
                                         <div class="btn-group" role="group">
                                             <a href="{{ url_for('serial_item_transfer.detail', transfer_id=transfer.id) }}" class="btn btn-sm btn-outline-primary">
                                                 <i data-feather="eye"></i> Review
@@ -219,6 +231,16 @@
                                                 <i data-feather="x"></i> Reject
                                             </button>
                                         </div>
+                                        {% elif transfer.status == 'qc_pending_sync' %}
+                                        <div class="d-flex align-items-center">
+                                            <div class="spinner-border spinner-border-sm text-warning me-2" role="status">
+                                                <span class="visually-hidden">Processing...</span>
+                                            </div>
+                                            <span class="badge bg-warning">In Progress</span>
+                                        </div>
+                                        {% else %}
+                                        <span class="badge bg-secondary">{{ transfer.status|title }}</span>
+                                        {% endif %}
                                     </td>
                                 </tr>
                                 {% endfor %}
@@ -229,6 +251,111 @@
                     <div class="alert alert-info">
                         <i data-feather="info"></i>
                         No pending serial item transfers for approval at this time.
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Pending GRPO Approvals -->
+    <div class="row mt-4">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <h5 class="mb-0">
+                            <i data-feather="package"></i>
+                            Pending GRPO Approvals
+                        </h5>
+                        <div>
+                            <button class="btn btn-outline-secondary btn-sm" onclick="refreshData()">
+                                <i data-feather="refresh-cw"></i> Refresh
+                            </button>
+                        </div>
+                    </div>
+                </div>
+                <div class="card-body">
+                    {% if pending_grpos %}
+                    <div class="table-responsive">
+                        <table class="table table-hover table-striped">
+                            <thead class="table-dark">
+                                <tr>
+                                    <th>PO Number</th>
+                                    <th>Supplier</th>
+                                    <th>Created By</th>
+                                    <th>Items Count</th>
+                                    <th>PO Total</th>
+                                    <th>Submitted</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for grpo in pending_grpos %}
+                                <tr>
+                                    <td><strong>{{ grpo.po_number }}</strong></td>
+                                    <td>
+                                        <div>
+                                            {% if grpo.supplier_name %}
+                                                <strong>{{ grpo.supplier_name }}</strong><br>
+                                                <small class="text-muted">{{ grpo.supplier_code }}</small>
+                                            {% else %}
+                                                <span class="text-muted">{{ grpo.supplier_code or 'N/A' }}</span>
+                                            {% endif %}
+                                        </div>
+                                    </td>
+                                    <td>
+                                        <div>
+                                            <strong>{{ grpo.user.first_name }} {{ grpo.user.last_name }}</strong><br>
+                                            <small class="text-muted">{{ grpo.user.username }}</small>
+                                        </div>
+                                    </td>
+                                    <td>
+                                        <span class="badge bg-info">{{ grpo.items|length }} items</span>
+                                    </td>
+                                    <td>
+                                        {% if grpo.po_total %}
+                                            <strong>${{ "%.2f"|format(grpo.po_total) }}</strong>
+                                        {% else %}
+                                            <span class="text-muted">N/A</span>
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        <small>{{ grpo.created_at.strftime('%Y-%m-%d %H:%M') }}</small>
+                                    </td>
+                                    <td>
+                                        {% if grpo.status == 'submitted' %}
+                                        <div class="btn-group" role="group">
+                                            <a href="{{ url_for('grpo.detail', grpo_id=grpo.id) }}" class="btn btn-sm btn-outline-primary">
+                                                <i data-feather="eye"></i> Review
+                                            </a>
+                                            <button class="btn btn-sm btn-success" id="approve-grpo-{{ grpo.id }}" onclick="showApprovalModal({{ grpo.id }}, '{{ grpo.po_number }}')">
+                                                <i data-feather="check"></i> Approve
+                                            </button>
+                                            <button class="btn btn-sm btn-danger" onclick="showRejectionModal({{ grpo.id }}, '{{ grpo.po_number }}')">
+                                                <i data-feather="x"></i> Reject
+                                            </button>
+                                        </div>
+                                        {% elif grpo.status == 'qc_pending_sync' %}
+                                        <div class="d-flex align-items-center">
+                                            <div class="spinner-border spinner-border-sm text-warning me-2" role="status">
+                                                <span class="visually-hidden">Processing...</span>
+                                            </div>
+                                            <span class="badge bg-warning">In Progress</span>
+                                        </div>
+                                        {% else %}
+                                        <span class="badge bg-secondary">{{ grpo.status|title }}</span>
+                                        {% endif %}
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    {% else %}
+                    <div class="alert alert-info">
+                        <i data-feather="info"></i>
+                        No pending GRPO documents for approval at this time.
                     </div>
                     {% endif %}
                 </div>
