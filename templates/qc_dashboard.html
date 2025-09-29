@@ -430,11 +430,11 @@
                                         </div>
                                     </td>
                                     <td>
-<!--                                        {% if job_info.document_type == 'GRPO' %}-->
-<!--                                            <a href="{{ url_for('grpo.detail', grpo_id=job_info.document.id) }}" class="btn btn-sm btn-outline-primary">-->
-<!--                                                <i data-feather="eye"></i> View-->
-<!--                                            </a>-->
-                                        {% if job_info.document_type == 'Serial Item Transfer' %}
+                                        {% if job_info.document_type == 'GRPO' %}
+                                            <a href="{{ url_for('grpo.detail', grpo_id=job_info.document.id) }}" class="btn btn-sm btn-outline-primary">
+                                                <i data-feather="eye"></i> View
+                                            </a>
+                                        {% elif job_info.document_type == 'Serial Item Transfer' %}
                                             <a href="{{ url_for('serial_item_transfer.detail', transfer_id=job_info.document.id) }}" class="btn btn-sm btn-outline-primary">
                                                 <i data-feather="eye"></i> View
                                             </a>
