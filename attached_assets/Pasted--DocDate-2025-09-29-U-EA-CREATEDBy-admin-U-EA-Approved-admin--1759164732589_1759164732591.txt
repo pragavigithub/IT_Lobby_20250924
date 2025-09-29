@@ -1,0 +1,72 @@
+{
+    "DocDate": "2025-09-29",
+    "U_EA_CREATEDBy": "admin",
+    "U_EA_Approved": "admin",
+    "Comments": "Serial Item Transfer DOC-0115-2025 - Created by admin, Approved by admin",
+    "FromWarehouse": "7000-FG",
+    "ToWarehouse": "7000-QFG",
+    "StockTransferLines": [
+        {
+            "LineNum": 0,
+            "ItemCode": "Non_serial",
+            "Quantity": 4,
+            "WarehouseCode": "7000-QFG",
+            "FromWarehouseCode": "7000-FG",
+            "UoMCode": "Each",
+            "SerialNumbers": []
+        },
+        {
+            "LineNum": 1,
+            "ItemCode": "MotoS",
+            "Quantity": 2,
+            "WarehouseCode": "7000-QFG",
+            "FromWarehouseCode": "7000-FG",
+            "UoMCode": "Each",
+            "SerialNumbers": [
+                {
+                    "InternalSerialNumber": "MotoS203",
+                    "Quantity": 1,
+                    "SystemSerialNumber": 203,
+                    "ExpiryDate": null,
+                    "ManufactureDate": null,
+                    "ReceptionDate": null,
+                    "WarrantyStart": null,
+                    "WarrantyEnd": null,
+                    "BaseLineNumber": 1
+                },
+                {
+                    "InternalSerialNumber": "MotoS204",
+                    "Quantity": 1,
+                    "SystemSerialNumber": 204,
+                    "ExpiryDate": null,
+                    "ManufactureDate": null,
+                    "ReceptionDate": null,
+                    "WarrantyStart": null,
+                    "WarrantyEnd": null,
+                    "BaseLineNumber": 1
+                }
+            ]
+        },
+        {
+            "LineNum": 2,
+            "ItemCode": "Nothing",
+            "Quantity": 1,
+            "WarehouseCode": "7000-QFG",
+            "FromWarehouseCode": "7000-FG",
+            "UoMCode": "Each",
+            "SerialNumbers": [
+                {
+                    "InternalSerialNumber": "NTG301",
+                    "Quantity": 1,
+                    "SystemSerialNumber": 301,
+                    "ExpiryDate": null,
+                    "ManufactureDate": null,
+                    "ReceptionDate": null,
+                    "WarrantyStart": null,
+                    "WarrantyEnd": null,
+                    "BaseLineNumber": 2
+                }
+            ]
+        }
+    ]
+}
