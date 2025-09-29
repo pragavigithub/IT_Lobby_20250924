@@ -33,11 +33,17 @@ from werkzeug.security import generate_password_hash
 from datetime import datetime
 
 # =============================================================================
-# SCHEMA AUTO-UPDATE SECTION - Last Updated: 2025-09-29 07:18:55
+# SCHEMA AUTO-UPDATE SECTION - Last Updated: 2025-09-29 08:12:31
 # =============================================================================
 # This section contains the latest database schema extracted from models
-# Models found: User, GRPODocument, GRPOItem, InventoryTransfer, InventoryTransferItem, PickList, PickListItem, PickListLine, PickListBinAllocation, InventoryCount, InventoryCountItem, BarcodeLabel, BinLocation, BinItem, BinScanningLog, QRCodeLabel, SalesOrder, SalesOrderLine, DocumentNumberSeries, SerialNumberTransfer, SerialNumberTransferItem, SerialNumberTransferSerial, SerialItemTransfer, SerialItemTransferItem, SAPJob, Branch, UserSession, PasswordResetToken, InvoiceDocument, InvoiceLine, InvoiceSerialNumber, SerialNumberLookup, Warehouse, BusinessPartner, SOInvoiceDocument, SOInvoiceItem, SOInvoiceSerial, SOSeries
-# Total tables: 38
+# Current Database Tables: barcode_labels, bin_items, bin_locations, bin_scanning_logs, branches, document_number_series, grpo_documents, grpo_items, inventory_count_items, inventory_counts, inventory_transfer_items, inventory_transfers, invoice_documents, invoice_lines, invoice_serial_numbers, password_reset_tokens, pick_list_bin_allocations, pick_list_items, pick_list_lines, pick_lists, qr_code_labels, sales_order_lines, sales_orders, sap_jobs, serial_item_transfer_items, serial_item_transfers, serial_number_lookups, serial_number_transfer_items, serial_number_transfer_serials, serial_number_transfers, so_invoice_documents, so_invoice_items, so_invoice_serials, so_series_cache, user_sessions, users
+# Total tables: 36
+# 
+# ✅ RECENT FIXES APPLIED (2025-09-29):
+# - Enhanced SAP job worker with stuck job cleanup mechanism
+# - Added timeout protection for Serial Number Transfer SAP posting
+# - Improved error handling for long-running SAP operations
+# - Added proper status reset for failed Serial Number Transfer jobs
 #
 # Generated Schema SQL:
 # -- Table: users (Model: User)

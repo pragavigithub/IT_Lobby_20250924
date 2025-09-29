@@ -58,6 +58,9 @@ class SAPJobWorker:
         with app.app_context():
             while self.running:
                 try:
+                    # Clean up stuck processing jobs first
+                    self._cleanup_stuck_jobs()
+                    
                     # Process pending jobs
                     self._process_pending_jobs()
                     
@@ -272,6 +275,21 @@ class SAPJobWorker:
             error_msg = sap_result.get('error', 'Unknown SAP error')
             raise Exception(f"SAP posting failed: {error_msg}")
             
+    def _cleanup_stuck_jobs(self):
+        """Clean up jobs that have been stuck in processing state for too long"""
+        # Jobs stuck in processing for more than 10 minutes should be retried
+        stuck_timeout = datetime.utcnow() - timedelta(minutes=10)
+        
+        stuck_jobs = SAPJob.query.filter(
+            SAPJob.status == 'processing',
+            SAPJob.started_at < stuck_timeout
+        ).all()
+        
+        for job in stuck_jobs:
+            error_msg = f"Job stuck in processing state for over 10 minutes, retrying (started at {job.started_at})"
+            logging.warning(f"⚠️ Cleaning up stuck job {job.id}: {error_msg}")
+            self._handle_job_retry(job, error_msg)
+            
     def _handle_job_retry(self, job: SAPJob, error_message: str):
         """Handle job retry logic"""
         job.retry_count += 1
@@ -306,6 +324,12 @@ class SAPJobWorker:
             transfer = SerialItemTransfer.query.get(job.document_id)
             if transfer:
                 transfer.status = 'qc_approved'  # Keep as approved but not posted
+                
+        elif job.document_type == 'serial_number_transfer':
+            transfer = SerialNumberTransfer.query.get(job.document_id)
+            if transfer:
+                transfer.status = 'qc_approved'  # Keep as approved but not posted
+                logging.info(f"🔄 Reset Serial Number Transfer {transfer.transfer_number} to qc_approved after job failure")
                 
         elif job.document_type == 'inventory_transfer':
             transfer = InventoryTransfer.query.get(job.document_id)

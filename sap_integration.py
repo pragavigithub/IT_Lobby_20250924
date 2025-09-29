@@ -2948,11 +2948,15 @@ class SAPIntegration:
             logging.info(json.dumps(transfer_data, indent=2, default=str))
             logging.info("=" * 80)
 
-            # Submit to SAP B1
+            # Submit to SAP B1 with timeout protection
             posting_start_time = time.time()
             logging.info(f"📤 Posting transfer {serial_transfer_document.transfer_number} to SAP B1 ({len(stock_transfer_lines)} lines)...")
             
-            response = self.session.post(url, json=transfer_data)
+            # Set a reasonable timeout for large transfers (base 30s + 5s per 100 lines)
+            timeout_seconds = max(30, 30 + (len(stock_transfer_lines) // 100) * 5)
+            logging.info(f"⏰ Using timeout of {timeout_seconds}s for {len(stock_transfer_lines)} lines")
+            
+            response = self.session.post(url, json=transfer_data, timeout=timeout_seconds)
             posting_time = time.time() - posting_start_time
             total_time = time.time() - start_time
 
@@ -2977,6 +2981,11 @@ class SAPIntegration:
         except Exception as e:
             error_msg = f"Error creating Serial Number Stock Transfer in SAP B1: {str(e)}"
             logging.error(error_msg)
+            
+            # Check for timeout-specific errors
+            if "timeout" in str(e).lower() or "timed out" in str(e).lower():
+                error_msg = f"SAP B1 API timeout after processing {len(stock_transfer_lines) if 'stock_transfer_lines' in locals() else 'unknown'} lines. This may indicate network issues or SAP server overload. Error: {str(e)}"
+                logging.error(f"⏰ TIMEOUT: {error_msg}")
             
             # Safe logging of timing if variables are defined
             try:
