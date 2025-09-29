@@ -619,16 +619,25 @@ def reject_transfer(transfer_id):
 
         # Check QC permissions
         if not current_user.has_permission('qc_dashboard') and current_user.role not in ['admin', 'manager']:
+            # Handle both AJAX and form requests
+            if request.headers.get('Content-Type') == 'application/x-www-form-urlencoded':
+                return jsonify({'success': False, 'error': 'Access denied - QC permissions required'}), 403
             flash('Access denied - QC permissions required', 'error')
             return redirect(url_for('qc_dashboard'))
 
         if transfer.status != 'submitted':
+            # Handle both AJAX and form requests
+            if request.headers.get('Content-Type') == 'application/x-www-form-urlencoded':
+                return jsonify({'success': False, 'error': f'Only submitted transfers can be rejected. Current status: {transfer.status}'}), 400
             flash('Only submitted transfers can be rejected', 'error')
             return redirect(url_for('qc_dashboard'))
 
         # Get rejection reason (required)
         qc_notes = request.form.get('qc_notes', '').strip()
         if not qc_notes:
+            # Handle both AJAX and form requests
+            if request.headers.get('Content-Type') == 'application/x-www-form-urlencoded':
+                return jsonify({'success': False, 'error': 'Rejection reason is required'}), 400
             flash('Rejection reason is required', 'error')
             return redirect(url_for('qc_dashboard'))
 
@@ -647,12 +656,26 @@ def reject_transfer(transfer_id):
         db.session.commit()
 
         logging.info(f"Serial Item Transfer {transfer_id} rejected by {current_user.username}")
+        
+        # Handle both AJAX and form requests
+        if request.headers.get('Content-Type') == 'application/x-www-form-urlencoded':
+            return jsonify({
+                'success': True,
+                'message': f'Serial Item Transfer {transfer.transfer_number} rejected successfully.',
+                'status': 'rejected'
+            })
+        
         flash(f'Serial Item Transfer {transfer.transfer_number} rejected.', 'warning')
         return redirect(url_for('qc_dashboard'))
 
     except Exception as e:
         logging.error(f"Error rejecting serial item transfer: {str(e)}")
         db.session.rollback()
+        
+        # Handle both AJAX and form requests
+        if request.headers.get('Content-Type') == 'application/x-www-form-urlencoded':
+            return jsonify({'success': False, 'error': f'Error rejecting transfer: {str(e)}'}), 500
+        
         flash('Error rejecting transfer', 'error')
         return redirect(url_for('qc_dashboard'))
 
