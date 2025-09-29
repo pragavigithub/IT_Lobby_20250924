@@ -1011,7 +1011,7 @@ class SAPIntegration:
 
         url = f"{self.base_url}/b1s/v1/StockTransfers"
 
-        # Build stock transfer lines for serial items - Group by item_code
+        # Build stock transfer lines for serial and non-serial items - Group by item_code
         item_groups = {}
         for item in transfer_document.items:
             if item.item_code not in item_groups:
@@ -1021,8 +1021,13 @@ class SAPIntegration:
                     'quantity': 0
                 }
 
-            # Add serial number if present
-            if item.serial_number:
+            # Handle serial vs non-serial items differently for quantity and serial numbers
+            if item.item_type == 'non_serial' or not item.serial_number:
+                # For non-serial items, use the actual quantity from database record
+                item_groups[item.item_code]['quantity'] += item.quantity
+                # Do not add any serial number entries for non-serial items - keep SerialNumbers array empty
+            else:
+                # For serial items, add actual serial number and increment quantity by 1
                 system_number = self.get_system_number_from_sap_get(item.serial_number)
                 item_groups[item.item_code]['serials'].append({
                     "InternalSerialNumber": item.serial_number,
