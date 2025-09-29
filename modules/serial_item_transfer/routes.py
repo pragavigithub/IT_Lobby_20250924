@@ -930,16 +930,15 @@ def post_to_sap(transfer_id):
                         'quantity': 0
                     }
 
-                # 🔑 Fetch SystemNumber for *each serial individually*
-                system_number = get_system_number_from_sap(sap, item.serial_number)
-
-
                 # Handle serial vs non-serial items differently for quantity and serial numbers
                 if item.item_type == 'non_serial':
                     # For non-serial items, use the actual quantity from database record
                     item_groups[item.item_code]['quantity'] += item.quantity
                     # Do not add any serial number entries for non-serial items - keep SerialNumbers array empty
                 else:
+                    # 🔑 Fetch SystemNumber only for serial items to avoid unnecessary API calls
+                    system_number = get_system_number_from_sap(sap, item.serial_number)
+                    
                     # For serial items, add actual serial number and increment quantity by 1
                     # BaseLineNumber will be assigned later based on index in the SerialNumbers array
                     item_groups[item.item_code]['serials'].append({
