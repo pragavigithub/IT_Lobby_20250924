@@ -3014,7 +3014,10 @@ class SAPIntegration:
                 chunk = unique_serials[i:i + chunk_size]
                 
                 # Build OR filter for the chunk with proper OData quoting
-                or_conditions = [f"InternalSerialNumber eq '{serial.replace("'", "''")}'" for serial in chunk]
+                or_conditions = []
+                for serial in chunk:
+                    escaped_serial = serial.replace("'", "''")  # Double single quotes for OData
+                    or_conditions.append(f"InternalSerialNumber eq '{escaped_serial}'")
                 filter_expr = " or ".join(or_conditions)
                 
                 url = f"{self.base_url}/b1s/v1/SerialNumberDetails"
