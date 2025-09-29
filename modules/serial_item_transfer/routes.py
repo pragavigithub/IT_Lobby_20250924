@@ -973,7 +973,7 @@ def post_to_sap(transfer_id):
                 "Quantity": group_data['quantity'],
                 "WarehouseCode": transfer.to_warehouse,
                 "FromWarehouseCode": transfer.from_warehouse,
-                "UoMCode": "Each",
+                "UoMCode": "",
                 "SerialNumbers": serials_with_base_line
             })
             line_num += 1
