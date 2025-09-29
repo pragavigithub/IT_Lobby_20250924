@@ -1025,11 +1025,13 @@ class SAPIntegration:
 
             # Add serial numbers
             if item.serial_number:
+                system_number = self.get_system_number_from_sap_get(item.serial_number)
                 line["SerialNumbers"] = [{
+
                     "BaseLineNumber": index,
                     "InternalSerialNumber": item.serial_number,
                     "Quantity": 1,
-                    "SystemSerialNumber": item.serial_number,
+                    "SystemSerialNumber": system_number,
                     # Set date fields to null instead of "None" string
                     "ExpiryDate": None,
                     "ManufactureDate": None,
@@ -1063,7 +1065,7 @@ class SAPIntegration:
                 timeout = 120  # 2 minutes for medium transfers
             else:
                 timeout = 60   # 1 minute for small transfers
-            
+            print(transfer_data)
             logging.info(f"Posting {item_count} items to SAP B1 with {timeout}s timeout")
             response = self.session.post(url, json=transfer_data, timeout=timeout)
            # logging.info(f"SAP B1 response status: {response.status_code}")
