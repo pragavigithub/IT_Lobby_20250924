@@ -2841,18 +2841,45 @@ class SAPIntegration:
             }
 
         try:
+            import time
+            start_time = time.time()
+            
             url = f"{self.base_url}/b1s/v1/StockTransfers"
 
+            # PERFORMANCE OPTIMIZATION: Collect all serial numbers first, then bulk lookup SystemSerialNumbers
+            all_serials = []
+            for item in serial_transfer_document.items:
+                validated_serials = [serial for serial in item.serial_numbers if serial.is_validated]
+                for serial in validated_serials:
+                    all_serials.append(serial.serial_number)
+            
+            logging.info(f"🚀 Processing {len(all_serials)} serial numbers for transfer {serial_transfer_document.transfer_number}")
+            
+            # Bulk lookup SystemSerialNumbers - this replaces hundreds of individual API calls
+            serial_to_system_map = self.get_system_numbers_bulk(all_serials)
+            
+            # CRITICAL: Validate all serials were found before posting
+            missing_serials = set(all_serials) - set(serial_to_system_map.keys())
+            if missing_serials:
+                # Log first few missing serials for debugging
+                missing_sample = list(missing_serials)[:10]
+                error_msg = f"Missing SystemSerialNumbers for {len(missing_serials)} serials (sample: {missing_sample}). Cannot proceed with SAP posting."
+                logging.error(f"❌ {error_msg}")
+                return {'success': False, 'error': error_msg}
+                
+            logging.info(f"✅ All {len(all_serials)} serials mapped successfully - proceeding with SAP posting")
+            
             # Build stock transfer document for serial numbers
             stock_transfer_lines = []
-
             line_index = 0
+            
             for item in serial_transfer_document.items:
                 # For serial-managed items, create separate line for each serial number (SAP B1 best practice)
                 validated_serials = [serial for serial in item.serial_numbers if serial.is_validated]
                 
                 for serial in validated_serials:
-                    system_number = self.get_system_number_from_sap_get(serial.serial_number)
+                    # Use bulk lookup result - we've already validated all serials exist
+                    system_number = serial_to_system_map[serial.serial_number]
                     
                     # Properly handle date fields - convert from model attributes if available
                     expiry_date = None
@@ -2890,6 +2917,9 @@ class SAPIntegration:
                     
                     stock_transfer_lines.append(line)
                     line_index += 1
+                    
+            lookup_time = time.time() - start_time
+            logging.info(f"⚡ Lookup phase completed in {lookup_time:.2f}s - Ready to post to SAP")
 
             # Build the stock transfer document
             transfer_data = {
@@ -2919,30 +2949,122 @@ class SAPIntegration:
             logging.info("=" * 80)
 
             # Submit to SAP B1
+            posting_start_time = time.time()
+            logging.info(f"📤 Posting transfer {serial_transfer_document.transfer_number} to SAP B1 ({len(stock_transfer_lines)} lines)...")
+            
             response = self.session.post(url, json=transfer_data)
+            posting_time = time.time() - posting_start_time
+            total_time = time.time() - start_time
 
             if response.status_code == 201:
                 result = response.json()
                 doc_num = result.get('DocNum')
-                logging.info(f"Successfully created Serial Number Stock Transfer {doc_num}")
+                logging.info(f"✅ Successfully created Serial Number Stock Transfer {doc_num}")
+                logging.info(f"⚡ PERFORMANCE: Lookup={lookup_time:.2f}s, Posting={posting_time:.2f}s, Total={total_time:.2f}s")
 
                 return {
                     'success': True,
                     'document_number': doc_num,
                     'doc_entry': result.get('DocEntry'),
-                    'message': f'Serial Number Stock Transfer {doc_num} created successfully'
+                    'message': f'Serial Number Stock Transfer {doc_num} created successfully - Total time: {total_time:.2f}s'
                 }
             else:
                 error_msg = f"SAP B1 error creating Serial Number Stock Transfer: {response.text}"
-                logging.error(error_msg)
+                logging.error(f"❌ {error_msg}")
+                logging.info(f"⚡ PERFORMANCE (Failed): Lookup={lookup_time:.2f}s, Posting={posting_time:.2f}s, Total={total_time:.2f}s")
                 return {'success': False, 'error': error_msg}
 
         except Exception as e:
             error_msg = f"Error creating Serial Number Stock Transfer in SAP B1: {str(e)}"
             logging.error(error_msg)
+            
+            # Safe logging of timing if variables are defined
+            try:
+                if 'lookup_time' in locals() and 'total_time' in locals():
+                    elapsed = time.time() - start_time if 'start_time' in locals() else 0
+                    logging.info(f"⚡ PERFORMANCE (Exception): Lookup={lookup_time:.2f}s, Total={elapsed:.2f}s")
+            except:
+                pass  # Don't let timing logs cause additional errors
+                
             return {'success': False, 'error': error_msg}
 
+    def get_system_numbers_bulk(self, serials):
+        """Bulk lookup SystemSerialNumber for multiple serial numbers to optimize performance"""
+        import time
+        
+        if not serials:
+            return {}
+            
+        if not self.ensure_logged_in():
+            logging.warning("SAP B1 not available, returning empty mapping for bulk system numbers")
+            return {}
+            
+        try:
+            start_time = time.time()
+            
+            # Deduplicate serials to avoid redundant lookups
+            unique_serials = list(set(serials))
+            serial_to_system_map = {}
+            
+            logging.info(f"🔍 Bulk fetching SystemSerialNumbers for {len(unique_serials)} unique serials...")
+            
+            # Strategy A: Chunked OData OR filter (preferred approach)
+            chunk_size = 50  # Keep URL under 8KB limit
+            for i in range(0, len(unique_serials), chunk_size):
+                chunk = unique_serials[i:i + chunk_size]
+                
+                # Build OR filter for the chunk with proper OData quoting
+                or_conditions = [f"InternalSerialNumber eq '{serial.replace("'", "''")}'" for serial in chunk]
+                filter_expr = " or ".join(or_conditions)
+                
+                url = f"{self.base_url}/b1s/v1/SerialNumberDetails"
+                params = {
+                    "$select": "InternalSerialNumber,SystemSerialNumber",
+                    "$filter": f"({filter_expr})"
+                }
+                
+                try:
+                    response = self.session.get(url, params=params, timeout=30)
+                    
+                    if response.status_code == 200:
+                        data = response.json()
+                        
+                        if "value" in data:
+                            for item in data["value"]:
+                                internal_serial = item.get("InternalSerialNumber")
+                                system_serial = item.get("SystemSerialNumber", 0)
+                                if internal_serial:
+                                    serial_to_system_map[internal_serial] = system_serial
+                                    
+                        logging.info(f"📦 Chunk {i//chunk_size + 1}: Retrieved {len(data.get('value', []))} system numbers")
+                    else:
+                        logging.warning(f"⚠️ Chunk {i//chunk_size + 1} failed with status {response.status_code}: {response.text}")
+                        # For failed chunk, fallback to individual lookups if needed
+                        
+                except Exception as chunk_error:
+                    logging.warning(f"⚠️ Error processing chunk {i//chunk_size + 1}: {str(chunk_error)}")
+                    # Continue with next chunk
+                    
+            elapsed_time = time.time() - start_time
+            found_count = len(serial_to_system_map)
+            requested_count = len(unique_serials)
+            
+            logging.info(f"✅ Bulk lookup completed in {elapsed_time:.2f}s - Mapped {found_count}/{requested_count} system numbers")
+            
+            # If some serials not found, log them for debugging
+            missing_serials = set(unique_serials) - set(serial_to_system_map.keys())
+            if missing_serials:
+                missing_sample = list(missing_serials)[:5]
+                logging.warning(f"⚠️ Missing SystemSerialNumbers for {len(missing_serials)} serials (sample: {missing_sample})")
+                
+            return serial_to_system_map
+            
+        except Exception as e:
+            logging.error(f"❌ Error in bulk system number lookup: {str(e)}")
+            return {}
+
     def get_system_number_from_sap_get(self, serial_number):
+        """Legacy single serial lookup - use get_system_numbers_bulk for better performance"""
         try:
             if not self.ensure_logged_in():
                 return jsonify({'success': False, 'error': 'SAP B1 connection failed'}), 500
