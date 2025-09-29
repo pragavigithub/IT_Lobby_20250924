@@ -1029,69 +1029,69 @@ function showSerialTransferRejectionModal(transferId, transferNumber) {
 // Serial Item Transfer approval functions
 function showSerialItemTransferApprovalModal(transferId, transferNumber) {
     const approveButton = document.getElementById(`approve-item-${transferId}`);
-    const originalHTML = approveButton.innerHTML;
+    
+    // Prevent double-clicking
+    if (approveButton && approveButton.disabled) return;
+    
+    const originalHTML = approveButton ? approveButton.innerHTML : '';
 
-    const shouldPostToSap = confirm(`Serial Item Transfer ${transferNumber}\n\nPost to SAP B1 after approval?\n\nOK = Approve & Post to SAP immediately\nCancel = Approve only (manual SAP posting later)`);
-
-    if (confirm(`Are you sure you want to approve serial item transfer ${transferNumber}?`)) {
-        // Set processing state
-        approveButton.disabled = true;
-        approveButton.innerHTML = '<i data-feather="loader" class="spin"></i> Processing...';
-        feather.replace();
+    if (confirm(`Are you sure you want to approve serial item transfer ${transferNumber}?\n\nThis will queue the transfer for SAP B1 posting in the background.`)) {
+        // Set processing state immediately
+        if (approveButton) {
+            approveButton.disabled = true;
+            approveButton.innerHTML = '<i data-feather="loader" class="spin"></i> Processing...';
+            feather.replace();
+        }
 
         // Make AJAX call to approve serial item transfer
         fetch(`/serial-item-transfer/${transferId}/approve`, {
             method: 'POST',
             headers: {
-                'Content-Type': 'application/x-www-form-urlencoded',
+                'Content-Type': 'application/json',
             },
-            body: 'qc_notes='
+            body: JSON.stringify({ qc_notes: '' })
         })
-        .then(response => {
-            if (response.redirected) {
-                // Check if we should post to SAP after approval
-                if (shouldPostToSap) {
-                    // Post to SAP B1 after successful approval
-                    fetch(`/serial-item-transfer/${transferId}/post_to_sap`, {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                        }
-                    })
-                    .then(sapResponse => sapResponse.json())
-                    .then(sapData => {
-                        if (sapData.success) {
-                            alert(`✅ Serial Item Transfer approved and posted to SAP B1!\n\nSAP Document Number: ${sapData.sap_document_number}`);
-                        } else {
-                            alert(`⚠️ Transfer approved but SAP posting failed: ${sapData.error}\n\nPlease post manually from the transfer detail page.`);
-                        }
-                        window.location.href = response.url;
-                    })
-                    .catch(sapError => {
-                        console.error('SAP posting error:', sapError);
-                        alert('⚠️ Transfer approved but SAP posting failed.\n\nPlease post manually from the transfer detail page.');
-                        window.location.href = response.url;
-                    });
-                } else {
-                    window.location.href = response.url;
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                // Update UI to show "In Progress" state
+                const buttonContainer = approveButton.closest('td');
+                if (buttonContainer) {
+                    buttonContainer.innerHTML = `
+                        <div class="d-flex align-items-center">
+                            <div class="spinner-border spinner-border-sm text-warning me-2" role="status">
+                                <span class="visually-hidden">Processing...</span>
+                            </div>
+                            <span class="badge bg-warning">In Progress</span>
+                        </div>
+                    `;
                 }
+                
+                showAlert(`✅ Serial Item Transfer approved successfully!\n\n${data.message}\n\nStatus: ${data.status}\nJob ID: ${data.job_id || 'N/A'}`, 'success');
+                
+                // Note: Do NOT reload the page - this would interrupt the SAP posting process
+                // The status will update automatically when the background job completes
+                
             } else {
-                return response.text();
+                showAlert(`❌ Error approving serial item transfer: ${data.error}`, 'error');
+                // Restore button state on error
+                if (approveButton) {
+                    approveButton.disabled = false;
+                    approveButton.innerHTML = originalHTML;
+                    feather.replace();
+                }
             }
         })
         .catch(error => {
-            console.error('Error:', error);
-            alert('Error approving serial item transfer');
+            console.error('Approval error:', error);
+            showAlert('❌ Network error approving transfer. Please try again.', 'error');
             // Restore button state on error
-            approveButton.disabled = false;
-            approveButton.innerHTML = originalHTML;
-            feather.replace();
+            if (approveButton) {
+                approveButton.disabled = false;
+                approveButton.innerHTML = originalHTML;
+                feather.replace();
+            }
         });
-    } else {
-        // User cancelled, restore button state
-        approveButton.disabled = false;
-        approveButton.innerHTML = originalHTML;
-        feather.replace();
     }
 }
 
