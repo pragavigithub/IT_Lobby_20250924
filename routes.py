@@ -1899,10 +1899,11 @@ def qc_dashboard():
     # Get pending GRPOs for QC approval
     pending_grpos = GRPODocument.query.filter_by(status='submitted').order_by(GRPODocument.created_at.desc()).all()
 
-    # Get pending Serial Number Transfers for QC approval
+    # Get pending Serial Number Transfers for QC approval (includes submitted and in-progress)
     from models import SerialNumberTransfer, SerialItemTransfer
-    pending_serial_transfers = SerialNumberTransfer.query.filter_by(status='submitted').order_by(
-        SerialNumberTransfer.created_at.desc()).all()
+    pending_serial_transfers = SerialNumberTransfer.query.filter(
+        SerialNumberTransfer.status.in_(['submitted', 'qc_pending_sync'])
+    ).order_by(SerialNumberTransfer.created_at.desc()).all()
 
     # Get pending Serial Item Transfers for QC approval (includes submitted and in-progress)
     pending_serial_item_transfers = SerialItemTransfer.query.filter(
@@ -1922,6 +1923,7 @@ def qc_dashboard():
     from models import SAPJob
     
     pending_sync_grpos = GRPODocument.query.filter_by(status='qc_pending_sync').order_by(GRPODocument.qc_approved_at.desc()).all()
+    pending_sync_serial_transfers = SerialNumberTransfer.query.filter_by(status='qc_pending_sync').order_by(SerialNumberTransfer.qc_approved_at.desc()).all()
     pending_sync_serial_item_transfers = SerialItemTransfer.query.filter_by(status='qc_pending_sync').order_by(SerialItemTransfer.qc_approved_at.desc()).all()
     
     # Get corresponding SAP jobs for these documents
@@ -1934,6 +1936,16 @@ def qc_dashboard():
                 'document': grpo,
                 'document_type': 'GRPO',
                 'document_number': grpo.po_number
+            })
+    
+    for transfer in pending_sync_serial_transfers:
+        job = SAPJob.query.filter_by(document_type='serial_number_transfer', document_id=transfer.id).order_by(SAPJob.created_at.desc()).first()
+        if job:
+            pending_sap_jobs.append({
+                'job': job,
+                'document': transfer,
+                'document_type': 'Serial Number Transfer',
+                'document_number': transfer.transfer_number
             })
     
     for transfer in pending_sync_serial_item_transfers:

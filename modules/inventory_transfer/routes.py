@@ -2036,77 +2036,116 @@ def serial_add_validated_item(transfer_id):
 @transfer_bp.route('/serial/<int:transfer_id>/qc_approve', methods=['POST'])
 @login_required 
 def serial_transfer_qc_approve(transfer_id):
-    """QC approve serial number transfer and post to SAP B1"""
-    from models import SerialNumberTransfer
+    """QC approve serial number transfer and queue for SAP B1 posting (idempotent)"""
+    from models import SerialNumberTransfer, SAPJob
+    from sqlalchemy import text
     
     try:
-        transfer = SerialNumberTransfer.query.get_or_404(transfer_id)
+        # Pessimistic lock to prevent race conditions
+        transfer = db.session.query(SerialNumberTransfer).filter_by(id=transfer_id).with_for_update().first()
+        if not transfer:
+            return jsonify({'success': False, 'error': 'Transfer not found'}), 404
         
         # Check QC permissions
         if not current_user.has_permission('qc_dashboard') and current_user.role not in ['admin', 'manager']:
             return jsonify({'success': False, 'error': 'QC permissions required'}), 403
         
-        if transfer.status != 'submitted':
-            return jsonify({'success': False, 'error': 'Only submitted transfers can be approved'}), 400
+        # **IDEMPOTENCY CHECK** - Handle already processed transfers
+        if transfer.status == 'qc_pending_sync':
+            # Already approved and in progress - return success (idempotent)
+            existing_job = SAPJob.query.filter_by(
+                document_type='serial_number_transfer',
+                document_id=transfer.id,
+                status='pending'
+            ).first()
+            return jsonify({
+                'success': True,
+                'message': 'Serial Number Transfer is already approved and being processed in the background.',
+                'status': 'qc_pending_sync',
+                'job_id': existing_job.id if existing_job else None,
+                'already_in_progress': True
+            })
+        elif transfer.status == 'posted':
+            return jsonify({
+                'success': True,
+                'message': f'Serial Number Transfer is already posted to SAP B1. Document Number: {transfer.sap_document_number}',
+                'status': 'posted',
+                'sap_document_number': transfer.sap_document_number,
+                'already_processed': True
+            })
+        elif transfer.status == 'qc_approved':
+            return jsonify({'success': False, 'error': 'Transfer has already been QC approved but not yet posted'}), 400
+        elif transfer.status != 'submitted':
+            return jsonify({'success': False, 'error': f'Transfer status is {transfer.status}, cannot approve'}), 400
+        
+        # Check for existing active SAP job for this document
+        existing_job = SAPJob.query.filter_by(
+            document_type='serial_number_transfer',
+            document_id=transfer.id
+        ).filter(SAPJob.status.in_(['pending', 'processing', 'retrying'])).first()
+        
+        if existing_job:
+            # Job already exists - return success (idempotent)
+            return jsonify({
+                'success': True,
+                'message': 'Serial Number Transfer approval is already in progress.',
+                'status': 'qc_pending_sync',
+                'job_id': existing_job.id,
+                'already_in_progress': True
+            })
         
         # Get QC notes from request
         data = request.get_json() or {}
         qc_notes = data.get('qc_notes', '')
         
-        # **SAP B1 POSTING** - Create Stock Transfer in SAP B1
-        from sap_integration import SAPIntegration
-        sap_b1 = SAPIntegration()
-        sap_document_number = None
-        sap_error = None
-        
+        # **ATOMIC TRANSACTION** - Update status to "In Progress" and queue background job
         try:
-            logging.info(f"Posting Serial Number Transfer {transfer.transfer_number} to SAP B1...")
+            # 1. Update transfer status to 'qc_pending_sync' (In Progress)
+            transfer.status = 'qc_pending_sync'
+            transfer.qc_approver_id = current_user.id
+            transfer.qc_approved_at = datetime.utcnow()
+            transfer.qc_notes = qc_notes
+            transfer.updated_at = datetime.utcnow()
             
-            # Create Stock Transfer in SAP B1
-            sap_result = sap_b1.create_serial_number_stock_transfer(transfer)
+            # 2. Update all items to approved status
+            for item in transfer.items:
+                item.qc_status = 'approved'
+                item.updated_at = datetime.utcnow()
             
-            if sap_result.get('success'):
-                sap_document_number = sap_result.get('document_number')
-                logging.info(f" Successfully posted to SAP B1: Document {sap_document_number}")
-            else:
-                sap_error = sap_result.get('error', 'Unknown SAP error')
-                logging.error(f" SAP B1 posting failed: {sap_error}")
-                
+            # 3. Create background job for SAP B1 posting
+            sap_job = SAPJob()
+            sap_job.job_type = 'serial_number_transfer_post'
+            sap_job.document_type = 'serial_number_transfer'
+            sap_job.document_id = transfer.id
+            sap_job.status = 'pending'
+            sap_job.user_id = current_user.id
+            sap_job.payload = json.dumps({
+                'transfer_id': transfer.id,
+                'transfer_number': transfer.transfer_number,
+                'qc_notes': qc_notes,
+                'approved_by': current_user.username
+            })
+            sap_job.created_at = datetime.utcnow()
+            
+            db.session.add(sap_job)
+            
+            # 4. Single atomic commit for all changes
+            db.session.commit()
+            
+            logging.info(f"🔄 Serial Number Transfer {transfer.transfer_number} approved and queued for SAP posting (Job #{sap_job.id}) by {current_user.username}")
+            
+            return jsonify({
+                'success': True,
+                'message': f'Serial Number Transfer {transfer.transfer_number} approved successfully! Processing in background...',
+                'transfer_id': transfer_id,
+                'status': 'qc_pending_sync',
+                'job_id': sap_job.id
+            })
+            
         except Exception as e:
-            sap_error = str(e)
-            logging.error(f" SAP B1 posting exception: {str(e)}")
-        
-        # Update transfer status to approved (regardless of SAP result for now)
-        transfer.status = 'Posted'
-        transfer.qc_approver_id = current_user.id
-        transfer.qc_approved_at = datetime.utcnow()
-        transfer.qc_notes = qc_notes
-        transfer.sap_document_number = sap_document_number
-        
-        # Update all items to approved status
-        for item in transfer.items:
-            item.qc_status = 'approved'
-        
-        db.session.commit()
-        
-        logging.info(f" Serial Number Transfer {transfer.transfer_number} approved by QC user {current_user.username}")
-        
-        # Prepare response message
-        if sap_document_number:
-            message = f'Serial Number Transfer {transfer.transfer_number} approved and posted to SAP B1 as {sap_document_number}'
-        elif sap_error:
-            message = f'Serial Number Transfer {transfer.transfer_number} approved locally. SAP posting failed: {sap_error}'
-        else:
-            message = f'Serial Number Transfer {transfer.transfer_number} approved successfully'
-        
-        return jsonify({
-            'success': True,
-            'message': message,
-            'transfer_id': transfer_id,
-            'status': 'qc_approved',
-            'sap_document_number': sap_document_number,
-            'sap_error': sap_error
-        })
+            db.session.rollback()
+            logging.error(f"Error in atomic approval transaction: {str(e)}")
+            raise
         
     except Exception as e:
         db.session.rollback()

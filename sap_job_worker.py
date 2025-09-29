@@ -13,7 +13,7 @@ from datetime import datetime, timedelta
 from typing import Optional
 
 from app import app, db
-from models import SAPJob, GRPODocument, SerialItemTransfer, InventoryTransfer
+from models import SAPJob, GRPODocument, SerialItemTransfer, InventoryTransfer, SerialNumberTransfer
 from sap_integration import SAPIntegration
 
 
@@ -112,6 +112,8 @@ class SAPJobWorker:
                 self._process_grpo_job(job)
             elif job.job_type == 'serial_transfer':
                 self._process_serial_transfer_job(job)
+            elif job.job_type == 'serial_number_transfer_post':
+                self._process_serial_number_transfer_job(job)
             elif job.job_type == 'inventory_transfer_post':
                 self._process_inventory_transfer_job(job)
             else:
@@ -195,6 +197,43 @@ class SAPJobWorker:
             # SAP posting failed
             error_msg = sap_result.get('error', 'Unknown SAP error')
             raise Exception(f"SAP posting failed: {error_msg}")
+    
+    def _process_serial_number_transfer_job(self, job: SAPJob):
+        """Process a Serial Number Transfer (bulk) posting job"""
+        payload = json.loads(job.payload)
+        transfer_id = payload['transfer_id']
+        
+        # Get the transfer document using SELECT FOR UPDATE to prevent race conditions
+        transfer = db.session.query(SerialNumberTransfer).filter_by(id=transfer_id).with_for_update().first()
+        if not transfer:
+            raise ValueError(f"Serial Number Transfer {transfer_id} not found")
+            
+        logging.info(f"📦 Posting Serial Number Transfer {transfer_id} ({transfer.transfer_number}) to SAP B1...")
+        
+        # Post to SAP B1
+        sap_result = self.sap.create_serial_number_stock_transfer(transfer)
+        
+        if sap_result.get('success'):
+            # Success - update both job and document atomically
+            sap_doc_number = sap_result.get('document_number')
+            
+            transfer.sap_document_number = sap_doc_number
+            transfer.status = 'posted'
+            transfer.updated_at = datetime.utcnow()
+            
+            job.status = 'completed'
+            job.completed_at = datetime.utcnow()
+            job.sap_document_number = sap_doc_number
+            job.result = json.dumps(sap_result)
+            
+            db.session.commit()
+            
+            logging.info(f"✅ Serial Number Transfer {transfer_id} ({transfer.transfer_number}) posted to SAP B1 as {sap_doc_number}")
+            
+        else:
+            # SAP posting failed - keep status as 'qc_pending_sync' and retry
+            error_msg = sap_result.get('error', 'Unknown SAP error')
+            raise Exception(f"SAP posting failed for Serial Number Transfer {transfer.transfer_number}: {error_msg}")
             
     def _process_inventory_transfer_job(self, job: SAPJob):
         """Process an Inventory Transfer posting job"""
