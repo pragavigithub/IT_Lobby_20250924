@@ -1904,9 +1904,10 @@ def qc_dashboard():
     pending_serial_transfers = SerialNumberTransfer.query.filter_by(status='submitted').order_by(
         SerialNumberTransfer.created_at.desc()).all()
 
-    # Get pending Serial Item Transfers for QC approval
-    pending_serial_item_transfers = SerialItemTransfer.query.filter_by(status='submitted').order_by(
-        SerialItemTransfer.created_at.desc()).all()
+    # Get pending Serial Item Transfers for QC approval (includes submitted and in-progress)
+    pending_serial_item_transfers = SerialItemTransfer.query.filter(
+        SerialItemTransfer.status.in_(['submitted', 'qc_pending_sync'])
+    ).order_by(SerialItemTransfer.created_at.desc()).all()
 
     # Get QC approved Serial Item Transfers ready for SAP posting
     qc_approved_serial_item_transfers = SerialItemTransfer.query.filter_by(status='qc_approved').order_by(
