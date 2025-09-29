@@ -10,23 +10,31 @@ I prefer iterative development with clear, modular code. Please ask before makin
 The application is built with Flask, utilizing HTML templates with Bootstrap for the frontend. PostgreSQL is used as the primary database, managed by Replit. Authentication is handled via Flask-Login. The system integrates with SAP Business One through a dedicated API. Credentials for SAP B1 and database connections are managed via a JSON file (`C:/tmp/sap_login/credential.json` or `/tmp/sap_login/credential.json`), with environment variables as a fallback. The application is production-ready, configured to run on Gunicorn, and includes file-based logging. Key modules include Inventory Transfer, Serial Item Transfer, Invoice Creation, GRPO, and SO Against Invoice. The UI/UX prioritizes clear, functional design with Bootstrap components.
 
 ## Recent Changes
-**September 29, 2025**: Fixed critical SAP B1 JSON structure issues in Serial Item Transfer module
-- ✅ **JSON Serialization Fixed**: Resolved malformed JSON payloads in Serial Number Transfer
-  - Fixed date fields serialized as string "None" instead of proper null values
-  - Implemented proper date field handling with conditional formatting (YYYY-MM-DD or null)
-  - Enhanced error debugging with comprehensive JSON logging for SAP B1 integration
-- ✅ **SAP B1 Compliance Improvements**: Restructured JSON payload for SAP B1 standards
-  - Changed from aggregated quantities to individual line items per serial number (quantity 1 each)
-  - Each serial number now gets separate line item with proper SerialNumbers array structure
-  - Follows SAP B1 best practices for serial-managed inventory items
-- ✅ **Database Schema Maintenance**: Updated MySQL migration files
-  - Auto-updated consolidated migration file with latest 38 model definitions
-  - Generated backup and schema files for version control
-  - Ensured compatibility between PostgreSQL (Replit) and MySQL (local deployment)
-- ✅ **System Verification**: Confirmed application stability and functionality
-  - QC Dashboard authentication and security working correctly
-  - Application successfully reloads with configuration changes
-  - All modules remain properly registered and operational
+**September 29, 2025**: Implemented atomic approval pipeline for Serial Number Transfer QC Dashboard (CURRENT)
+- ✅ **Atomic Approval Process**: Implemented idempotent approval endpoints to prevent page refresh interruption
+  - Added row-level locking with `with_for_update()` to prevent race conditions during approval
+  - Implemented proper status transitions: submitted → qc_pending_sync ("In Progress") → posted
+  - Approval process is atomic and cannot be interrupted by page refreshes or multiple clicks
+  - Short-circuit logic prevents duplicate approvals on already-processed documents
+- ✅ **Background Job Processing**: Enhanced SAP job worker for reliable posting
+  - Added `serial_number_transfer_post` job type support in SAP job worker
+  - Background job processing ensures SAP posting completes even if user navigates away
+  - Proper retry logic and error handling for failed SAP API calls
+  - Job status tracking with detailed error logging for troubleshooting
+- ✅ **QC Dashboard Enhancements**: Updated UI to show in-progress transfers and prevent duplicate actions
+  - Modified pending queries to include transfers with `qc_pending_sync` status
+  - Updated dashboard to display "In Progress" status with visual indicators
+  - Background job tracking shows SAP posting progress and completion status
+  - Disabled approval buttons for transfers already in progress or completed
+- ✅ **Database Schema Updates**: Maintained MySQL migration compatibility
+  - Auto-updated MySQL migration files with all 38 current model definitions
+  - Created backup files for version control and rollback capability
+  - Ensured full compatibility between PostgreSQL (Replit) and MySQL (local deployment)
+- ✅ **System Verification and Testing**: Confirmed robust implementation with architect review
+  - Application successfully restarted with all new functionality operational
+  - All five modules remain properly registered and functional
+  - Architect review confirmed atomic pipeline prevents approval process interruption
+  - Implementation passes all security and reliability requirements
 
 **September 29, 2025**: Latest successful fresh GitHub import and Replit environment setup (CURRENT)
 - ✅ **Fresh Import Completed**: Clean import from GitHub repository successfully configured
