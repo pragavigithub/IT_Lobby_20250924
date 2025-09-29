@@ -8,7 +8,7 @@ import re
 from app import db
 from models import SerialItemTransfer, SerialItemTransferItem, DocumentNumberSeries, SAPJob
 from sap_integration import SAPIntegration
-from sqlalchemy import or_
+from sqlalchemy import or_, null
 
 # Create blueprint for Serial Item Transfer module
 serial_item_bp = Blueprint('serial_item_transfer', __name__, url_prefix='/serial-item-transfer')
@@ -960,11 +960,11 @@ def post_to_sap(transfer_id):
                 serial_with_base_line["BaseLineNumber"] = line_num  # Must match parent LineNum
                 # Add required fields for SAP B1 format
                 serial_with_base_line["Quantity"] = 1
-                serial_with_base_line["ExpiryDate"] = "None"
-                serial_with_base_line["ManufactureDate"] = "None"
-                serial_with_base_line["ReceptionDate"] = "None"
-                serial_with_base_line["WarrantyStart"] = "None"
-                serial_with_base_line["WarrantyEnd"] = "None"
+                serial_with_base_line["ExpiryDate"] = null
+                serial_with_base_line["ManufactureDate"] = null
+                serial_with_base_line["ReceptionDate"] = null
+                serial_with_base_line["WarrantyStart"] = null
+                serial_with_base_line["WarrantyEnd"] = null
                 serials_with_base_line.append(serial_with_base_line)
             
             sap_transfer_data["StockTransferLines"].append({
