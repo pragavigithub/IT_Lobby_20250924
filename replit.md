@@ -10,6 +10,24 @@ I prefer iterative development with clear, modular code. Please ask before makin
 The application is built with Flask, utilizing HTML templates with Bootstrap for the frontend. PostgreSQL is used as the primary database, managed by Replit. Authentication is handled via Flask-Login. The system integrates with SAP Business One through a dedicated API. Credentials for SAP B1 and database connections are managed via a JSON file (`C:/tmp/sap_login/credential.json` or `/tmp/sap_login/credential.json`), with environment variables as a fallback. The application is production-ready, configured to run on Gunicorn, and includes file-based logging. Key modules include Inventory Transfer, Serial Item Transfer, Invoice Creation, GRPO, and SO Against Invoice. The UI/UX prioritizes clear, functional design with Bootstrap components.
 
 ## Recent Changes
+**September 29, 2025**: Fixed critical SAP B1 JSON structure issues in Serial Item Transfer module
+- ✅ **JSON Serialization Fixed**: Resolved malformed JSON payloads in Serial Number Transfer
+  - Fixed date fields serialized as string "None" instead of proper null values
+  - Implemented proper date field handling with conditional formatting (YYYY-MM-DD or null)
+  - Enhanced error debugging with comprehensive JSON logging for SAP B1 integration
+- ✅ **SAP B1 Compliance Improvements**: Restructured JSON payload for SAP B1 standards
+  - Changed from aggregated quantities to individual line items per serial number (quantity 1 each)
+  - Each serial number now gets separate line item with proper SerialNumbers array structure
+  - Follows SAP B1 best practices for serial-managed inventory items
+- ✅ **Database Schema Maintenance**: Updated MySQL migration files
+  - Auto-updated consolidated migration file with latest 38 model definitions
+  - Generated backup and schema files for version control
+  - Ensured compatibility between PostgreSQL (Replit) and MySQL (local deployment)
+- ✅ **System Verification**: Confirmed application stability and functionality
+  - QC Dashboard authentication and security working correctly
+  - Application successfully reloads with configuration changes
+  - All modules remain properly registered and operational
+
 **September 29, 2025**: Successful fresh GitHub import and Replit environment setup
 - ✅ **Fresh Import Completed**: Clean import from GitHub repository successfully configured
   - Created new PostgreSQL database using Replit's managed database service
