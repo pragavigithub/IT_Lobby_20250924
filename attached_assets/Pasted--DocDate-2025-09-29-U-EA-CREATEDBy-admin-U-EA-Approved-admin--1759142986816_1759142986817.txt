@@ -1,0 +1,75 @@
+{
+    "DocDate": "2025-09-29",
+    "U_EA_CREATEDBy": "admin",
+    "U_EA_Approved": "admin",
+    "Comments": "Serial Item Transfer DOC-0099-2025 - Created by admin, Approved by admin",
+    "FromWarehouse": "7000-FG",
+    "ToWarehouse": "7000-QFG",
+    "StockTransferLines": [
+        {
+            "LineNum": 0,
+            "ItemCode": "MotoS",
+            "Quantity": 5,
+            "WarehouseCode": "7000-QFG",
+            "FromWarehouseCode": "7000-FG",
+            "UoMCode": "Each",
+            "SerialNumbers": [
+                {
+                    "BaseLineNumber": 0,
+                    "InternalSerialNumber": "MotoS1",
+                    "Quantity": 1,
+                    "SystemSerialNumber": 1,
+                    "ExpiryDate": null,
+                    "ManufactureDate": null,
+                    "ReceptionDate": null,
+                    "WarrantyStart": null,
+                    "WarrantyEnd": null
+                },
+                 {
+                    "BaseLineNumber": 1,
+                    "InternalSerialNumber": "MotoS2",
+                    "Quantity": 1,
+                    "SystemSerialNumber": 2,
+                    "ExpiryDate": null,
+                    "ManufactureDate": null,
+                    "ReceptionDate": null,
+                    "WarrantyStart": null,
+                    "WarrantyEnd": null
+                },
+                {
+                    "BaseLineNumber": 2,
+                    "InternalSerialNumber": "MotoS3",
+                    "Quantity": 1,
+                    "SystemSerialNumber": 3,
+                    "ExpiryDate": null,
+                    "ManufactureDate": null,
+                    "ReceptionDate": null,
+                    "WarrantyStart": null,
+                    "WarrantyEnd": null
+                },
+                {
+                    "BaseLineNumber": 3,
+                    "InternalSerialNumber": "MotoS4",
+                    "Quantity": 1,
+                    "SystemSerialNumber": 4,
+                    "ExpiryDate": null,
+                    "ManufactureDate": null,
+                    "ReceptionDate": null,
+                    "WarrantyStart": null,
+                    "WarrantyEnd": null
+                },
+                {
+                    "BaseLineNumber": 4,
+                    "InternalSerialNumber": "MotoS5",
+                    "Quantity": 1,
+                    "SystemSerialNumber": 5,
+                    "ExpiryDate": null,
+                    "ManufactureDate": null,
+                    "ReceptionDate": null,
+                    "WarrantyStart": null,
+                    "WarrantyEnd": null
+                }
+            ]
+        }
+    ]
+}

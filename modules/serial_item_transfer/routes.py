@@ -941,6 +941,7 @@ def post_to_sap(transfer_id):
                     # Do not add any serial number entries for non-serial items - keep SerialNumbers array empty
                 else:
                     # For serial items, add actual serial number and increment quantity by 1
+                    # BaseLineNumber will be assigned later based on index in the SerialNumbers array
                     item_groups[item.item_code]['serials'].append({
                         "SystemSerialNumber": system_number,
                         "InternalSerialNumber": item.serial_number,
@@ -953,14 +954,28 @@ def post_to_sap(transfer_id):
         # Create stock transfer lines
         line_num = 0
         for item_code, group_data in item_groups.items():
+            # Assign BaseLineNumber sequentially for each serial number in this item group
+            serials_with_base_line = []
+            for idx, serial_data in enumerate(group_data['serials']):
+                serial_with_base_line = serial_data.copy()
+                serial_with_base_line["BaseLineNumber"] = idx
+                # Add required fields for SAP B1 format
+                serial_with_base_line["Quantity"] = 1
+                serial_with_base_line["ExpiryDate"] = "None"
+                serial_with_base_line["ManufactureDate"] = "None"
+                serial_with_base_line["ReceptionDate"] = "None"
+                serial_with_base_line["WarrantyStart"] = "None"
+                serial_with_base_line["WarrantyEnd"] = "None"
+                serials_with_base_line.append(serial_with_base_line)
+            
             sap_transfer_data["StockTransferLines"].append({
                 "LineNum": line_num,
                 "ItemCode": item_code,
                 "Quantity": group_data['quantity'],
                 "WarehouseCode": transfer.to_warehouse,
                 "FromWarehouseCode": transfer.from_warehouse,
-                "UoMCode": "",
-                "SerialNumbers": group_data['serials']
+                "UoMCode": "Each",
+                "SerialNumbers": serials_with_base_line
             })
             line_num += 1
 
