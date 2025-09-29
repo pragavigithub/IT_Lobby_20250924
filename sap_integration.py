@@ -1011,24 +1011,20 @@ class SAPIntegration:
 
         url = f"{self.base_url}/b1s/v1/StockTransfers"
 
-        # Build stock transfer lines for serial items
-        stock_transfer_lines = []
-        for index, item in enumerate(transfer_document.items):
-            line = {
-                "LineNum": index,
-                "ItemCode": item.item_code,
-                "Quantity": 1,  # Serial items always have quantity 1
-                "WarehouseCode": transfer_document.to_warehouse,
-                "FromWarehouseCode": transfer_document.from_warehouse,
-                "UoMCode": "Each"  # Default UoM for serial items
-            }
+        # Build stock transfer lines for serial items - Group by item_code
+        item_groups = {}
+        for item in transfer_document.items:
+            if item.item_code not in item_groups:
+                item_groups[item.item_code] = {
+                    'item_code': item.item_code,
+                    'serials': [],
+                    'quantity': 0
+                }
 
-            # Add serial numbers
+            # Add serial number if present
             if item.serial_number:
                 system_number = self.get_system_number_from_sap_get(item.serial_number)
-                line["SerialNumbers"] = [{
-
-                    "BaseLineNumber": index,
+                item_groups[item.item_code]['serials'].append({
                     "InternalSerialNumber": item.serial_number,
                     "Quantity": 1,
                     "SystemSerialNumber": system_number,
@@ -1038,9 +1034,31 @@ class SAPIntegration:
                     "ReceptionDate": None,
                     "WarrantyStart": None,
                     "WarrantyEnd": None
-                }]
+                })
+                item_groups[item.item_code]['quantity'] += 1
 
+        # Create stock transfer lines with proper BaseLineNumber sequencing
+        stock_transfer_lines = []
+        line_num = 0
+        for item_code, group_data in item_groups.items():
+            # Assign BaseLineNumber to match the parent line's LineNum (SAP B1 requirement)
+            serials_with_base_line = []
+            for serial_data in group_data['serials']:
+                serial_with_base_line = serial_data.copy()
+                serial_with_base_line["BaseLineNumber"] = line_num  # Must match parent LineNum
+                serials_with_base_line.append(serial_with_base_line)
+            
+            line = {
+                "LineNum": line_num,
+                "ItemCode": item_code,
+                "Quantity": group_data['quantity'],
+                "WarehouseCode": transfer_document.to_warehouse,
+                "FromWarehouseCode": transfer_document.from_warehouse,
+                "UoMCode": "Each",
+                "SerialNumbers": serials_with_base_line
+            }
             stock_transfer_lines.append(line)
+            line_num += 1
 
         transfer_data = {
             "DocDate": datetime.now().strftime('%Y-%m-%d'),

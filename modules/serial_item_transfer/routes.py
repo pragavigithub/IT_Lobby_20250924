@@ -954,11 +954,11 @@ def post_to_sap(transfer_id):
         # Create stock transfer lines
         line_num = 0
         for item_code, group_data in item_groups.items():
-            # Assign BaseLineNumber sequentially for each serial number in this item group
+            # Assign BaseLineNumber to match the parent line's LineNum (SAP B1 requirement)
             serials_with_base_line = []
-            for idx, serial_data in enumerate(group_data['serials']):
+            for serial_data in group_data['serials']:
                 serial_with_base_line = serial_data.copy()
-                serial_with_base_line["BaseLineNumber"] = idx
+                serial_with_base_line["BaseLineNumber"] = line_num  # Must match parent LineNum
                 # Add required fields for SAP B1 format
                 serial_with_base_line["Quantity"] = 1
                 serial_with_base_line["ExpiryDate"] = "None"
