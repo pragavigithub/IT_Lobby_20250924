@@ -1,0 +1,98 @@
+{
+    "DocDate": "2025-09-29",
+    "DueDate": "2025-09-29",
+    "CardCode": "",
+    "CardName": "",
+    "Address": "",
+    "U_EA_CREATEDBy": "admin",
+    "U_EA_Approved": "admin",
+    "Comments": "Serial Number Transfer ST-20250929-HHD7 - admin",
+    "JournalMemo": "Serial Number Transfer - ST-20250929-HHD7",
+    "PriceList": -1,
+    "SalesPersonCode": -1,
+    "FromWarehouse": "7000-FG",
+    "ToWarehouse": "7000-QFG",
+    "AuthorizationStatus": "sasWithout",
+    "StockTransferLines": [
+        {
+            "LineNum": 0,
+            "ItemCode": "MotoS",
+            "Quantity": 3,
+            "WarehouseCode": "7000-QFG",
+            "FromWarehouseCode": "7000-FG",
+            "UoMCode": "EA",
+            "SerialNumbers": [
+                {
+                    "SystemSerialNumber": 12,
+                    "InternalSerialNumber": "MotoS12",
+                    "ManufacturerSerialNumber": "MotoS12",
+                    "ExpiryDate": "None",
+                    "ManufactureDate": "None",
+                    "ReceptionDate": "None",
+                    "WarrantyStart": "None",
+                    "WarrantyEnd": "None",
+                    "Location": "None",
+                    "Notes": "None"
+                },
+                {
+                    "SystemSerialNumber": 10,
+                    "InternalSerialNumber": "MotoS10",
+                    "ManufacturerSerialNumber": "MotoS10",
+                    "ExpiryDate": "None",
+                    "ManufactureDate": "None",
+                    "ReceptionDate": "None",
+                    "WarrantyStart": "None",
+                    "WarrantyEnd": "None",
+                    "Location": "None",
+                    "Notes": "None"
+                },
+                {
+                    "SystemSerialNumber": 11,
+                    "InternalSerialNumber": "MotoS11",
+                    "ManufacturerSerialNumber": "MotoS11",
+                    "ExpiryDate": "None",
+                    "ManufactureDate": "None",
+                    "ReceptionDate": "None",
+                    "WarrantyStart": "None",
+                    "WarrantyEnd": "None",
+                    "Location": "None",
+                    "Notes": "None"
+                }
+            ]
+        },
+        {
+            "LineNum": 1,
+            "ItemCode": "Nothing",
+            "Quantity": 2,
+            "WarehouseCode": "7000-QFG",
+            "FromWarehouseCode": "7000-FG",
+            "UoMCode": "EA",
+            "SerialNumbers": [
+                {
+                    "SystemSerialNumber": 36,
+                    "InternalSerialNumber": "NTG36",
+                    "ManufacturerSerialNumber": "NTG36",
+                    "ExpiryDate": "None",
+                    "ManufactureDate": "None",
+                    "ReceptionDate": "None",
+                    "WarrantyStart": "None",
+                    "WarrantyEnd": "None",
+                    "Location": "None",
+                    "Notes": "None"
+                },
+                {
+                    "SystemSerialNumber": 37,
+                    "InternalSerialNumber": "NTG37",
+                    "ManufacturerSerialNumber": "NTG37",
+                    "ExpiryDate": "None",
+                    "ManufactureDate": "None",
+                    "ReceptionDate": "None",
+                    "WarrantyStart": "None",
+                    "WarrantyEnd": "None",
+                    "Location": "None",
+                    "Notes": "None"
+                }
+            ]
+        }
+    ]
+}

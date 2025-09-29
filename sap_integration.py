@@ -2844,41 +2844,50 @@ class SAPIntegration:
             # Build stock transfer document for serial numbers
             stock_transfer_lines = []
 
-            for index, item in enumerate(serial_transfer_document.items):
-                # Create transfer line with serial numbers
-                line = {
-                    "LineNum": index,
-                    "ItemCode": item.item_code,
-                    "Quantity": len(item.serial_numbers),  # Quantity based on serial count
-                    "WarehouseCode": item.to_warehouse_code,
-                    "FromWarehouseCode": item.from_warehouse_code,
-                    "UoMCode": item.unit_of_measure or ""
-                }
-
-                # Add serial numbers to the line
-                serial_numbers = []
-
-                for serial in item.serial_numbers:
-                    if serial.is_validated:  # Only include validated serials
-                        system_number = self.get_system_number_from_sap_get(serial.serial_number)
-                        serial_info = {
+            line_index = 0
+            for item in serial_transfer_document.items:
+                # For serial-managed items, create separate line for each serial number (SAP B1 best practice)
+                validated_serials = [serial for serial in item.serial_numbers if serial.is_validated]
+                
+                for serial in validated_serials:
+                    system_number = self.get_system_number_from_sap_get(serial.serial_number)
+                    
+                    # Properly handle date fields - convert from model attributes if available
+                    expiry_date = None
+                    manufacture_date = None
+                    reception_date = None
+                    
+                    if hasattr(serial, 'expiry_date') and serial.expiry_date:
+                        expiry_date = serial.expiry_date.strftime('%Y-%m-%d') if serial.expiry_date else None
+                    if hasattr(serial, 'manufacturing_date') and serial.manufacturing_date:
+                        manufacture_date = serial.manufacturing_date.strftime('%Y-%m-%d') if serial.manufacturing_date else None
+                    if hasattr(serial, 'admission_date') and serial.admission_date:
+                        reception_date = serial.admission_date.strftime('%Y-%m-%d') if serial.admission_date else None
+                    
+                    # Create separate line for each serial number with quantity 1
+                    line = {
+                        "LineNum": line_index,
+                        "ItemCode": item.item_code,
+                        "Quantity": 1,  # Each serial number is quantity 1
+                        "WarehouseCode": item.to_warehouse_code,
+                        "FromWarehouseCode": item.from_warehouse_code,
+                        "UoMCode": item.unit_of_measure or "EA",
+                        "SerialNumbers": [{
                             "SystemSerialNumber": system_number,
                             "InternalSerialNumber": serial.serial_number,
                             "ManufacturerSerialNumber": serial.serial_number,
-                            "ExpiryDate":  None,
-                            "ManufactureDate":  None,
-                            "ReceptionDate":  None,
+                            "ExpiryDate": expiry_date,
+                            "ManufactureDate": manufacture_date,
+                            "ReceptionDate": reception_date,
                             "WarrantyStart": None,
                             "WarrantyEnd": None,
                             "Location": None,
                             "Notes": None
-                        }
-                        serial_numbers.append(serial_info)
-
-                if serial_numbers:
-                    line["SerialNumbers"] = serial_numbers
-
-                stock_transfer_lines.append(line)
+                        }]
+                    }
+                    
+                    stock_transfer_lines.append(line)
+                    line_index += 1
 
             # Build the stock transfer document
             transfer_data = {
@@ -2901,11 +2910,11 @@ class SAPIntegration:
 
             # Log the payload for debugging
             logging.info("=" * 80)
-            #logging.info("SERIAL NUMBER STOCK TRANSFER - JSON PAYLOAD")
+            logging.info("SERIAL NUMBER STOCK TRANSFER - JSON PAYLOAD")
             logging.info("=" * 80)
             import json
-            #logging.info(json.dumps(transfer_data, indent=2, default=str))
-            #logging.info("=" * 80)
+            logging.info(json.dumps(transfer_data, indent=2, default=str))
+            logging.info("=" * 80)
 
             # Submit to SAP B1
             response = self.session.post(url, json=transfer_data)
