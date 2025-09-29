@@ -939,9 +939,24 @@ function showSerialTransferApprovalModal(transferId, transferNumber) {
         .then(response => response.json())
         .then(data => {
             if (data.success) {
-                showAlert(`Serial Number Transfer approved successfully! ${data.message}`, 'success');
-                // Wait for alert to be visible before refresh
-                setTimeout(() => location.reload(), 1500);
+                // Update UI to show "In Progress" state immediately
+                const buttonContainer = approveButton.closest('td');
+                if (buttonContainer) {
+                    buttonContainer.innerHTML = `
+                        <div class="d-flex align-items-center">
+                            <div class="spinner-border spinner-border-sm text-warning me-2" role="status">
+                                <span class="visually-hidden">Processing...</span>
+                            </div>
+                            <span class="badge bg-warning">In Progress</span>
+                        </div>
+                    `;
+                }
+                
+                showAlert(`✅ Serial Number Transfer approved successfully!\n\n${data.message}\n\nStatus: ${data.status}\nJob ID: ${data.job_id || 'N/A'}`, 'success');
+                
+                // Note: Do NOT reload the page - this would interrupt the SAP posting process
+                // The status will update automatically when the background job completes
+                
             } else {
                 showAlert(`Error approving serial transfer: ${data.error}`, 'error');
                 // If there's a redirect, go to it
