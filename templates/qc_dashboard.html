@@ -1098,6 +1098,16 @@ function showSerialItemTransferApprovalModal(transferId, transferNumber) {
 function showSerialItemTransferRejectionModal(transferId, transferNumber) {
     const reason = prompt(`Please enter the reason for rejecting serial item transfer ${transferNumber}:`);
     if (reason && reason.trim()) {
+        // Find the reject button and show processing state
+        const rejectButton = document.querySelector(`button[onclick*="${transferId}"][onclick*="Rejection"]`);
+        let originalHTML = '';
+        if (rejectButton) {
+            originalHTML = rejectButton.innerHTML;
+            rejectButton.disabled = true;
+            rejectButton.innerHTML = '<i data-feather="loader" class="spin"></i> Rejecting...';
+            feather.replace();
+        }
+
         // Make AJAX call to reject serial item transfer
         fetch(`/serial-item-transfer/${transferId}/reject`, {
             method: 'POST',
@@ -1107,15 +1117,36 @@ function showSerialItemTransferRejectionModal(transferId, transferNumber) {
             body: `qc_notes=${encodeURIComponent(reason.trim())}`
         })
         .then(response => {
-            if (response.redirected) {
-                window.location.href = response.url;
+            // Check if request was successful
+            if (response.ok) {
+                // Show success message and refresh the page
+                showAlert(`✅ Serial Item Transfer ${transferNumber} rejected successfully!`, 'warning');
+                
+                // Remove the transfer row or update its status
+                const transferRow = document.querySelector(`button[onclick*="${transferId}"]`)?.closest('tr');
+                if (transferRow) {
+                    transferRow.style.opacity = '0.5';
+                    transferRow.querySelector('.btn-group').innerHTML = '<span class="badge bg-danger">Rejected</span>';
+                }
+                
+                // Refresh the page after a short delay to show updated status
+                setTimeout(() => {
+                    window.location.reload();
+                }, 1500);
             } else {
-                return response.text();
+                throw new Error(`HTTP error! status: ${response.status}`);
             }
         })
         .catch(error => {
-            console.error('Error:', error);
-            alert('Error rejecting serial item transfer');
+            console.error('Error rejecting serial item transfer:', error);
+            showAlert('❌ Error rejecting serial item transfer. Please try again.', 'error');
+            
+            // Restore button state on error
+            if (rejectButton) {
+                rejectButton.disabled = false;
+                rejectButton.innerHTML = originalHTML;
+                feather.replace();
+            }
         });
     }
 }
