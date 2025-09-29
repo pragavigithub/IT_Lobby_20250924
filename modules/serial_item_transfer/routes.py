@@ -522,9 +522,9 @@ def approve_transfer(transfer_id):
         elif request.json:
             qc_notes = request.json.get('qc_notes', '').strip()
 
-        # Direct SAP B1 posting transaction (no background job queue)
+        # Direct SAP B1 posting transaction (atomic - no race conditions)
         try:
-            # Lock the document for update
+            # Lock the document for update and keep transaction open during SAP call
             transfer = db.session.query(SerialItemTransfer).filter_by(id=transfer_id).with_for_update().first()
             if not transfer:
                 return jsonify({'success': False, 'error': 'Transfer not found'}), 404
@@ -535,45 +535,44 @@ def approve_transfer(transfer_id):
                 if transfer.status == 'posted':
                     return jsonify({
                         'success': True,
-                        'message': 'Serial Item Transfer is already posted to SAP B1.',
+                        'message': f'Serial Item Transfer is already posted to SAP B1. Document Number: {transfer.sap_document_number}',
                         'status': 'posted',
+                        'sap_document_number': transfer.sap_document_number,
                         'already_processed': True
                     })
                 return jsonify({'success': False, 'error': f'Transfer status is {transfer.status}, cannot approve'}), 400
             
-            # Update transfer status to QC approved first
+            # Prepare QC approval metadata (but don't commit yet)
             transfer.qc_approver_id = current_user.id
             transfer.qc_approved_at = datetime.utcnow()
             transfer.qc_notes = qc_notes
             transfer.updated_at = datetime.utcnow()
 
-            # Update all items to approved status
+            # Update all items to approved status (but don't commit yet)
             for item in transfer.items:
                 item.qc_status = 'approved'
                 item.updated_at = datetime.utcnow()
 
-            # Commit QC approval status before attempting SAP posting
-            db.session.commit()
-            
-            logging.info(f"✅ Serial Item Transfer {transfer_id} QC approved by {current_user.username}")
+            logging.info(f"🔄 Processing QC approval and SAP posting for Serial Item Transfer {transfer_id}...")
 
-            # Post directly to SAP B1 (synchronous)
+            # Post directly to SAP B1 (synchronous) while transaction is still open
             sap = SAPIntegration()
             logging.info(f"📦 Posting Serial Item Transfer {transfer_id} directly to SAP B1...")
             
             sap_result = sap.create_serial_item_stock_transfer(transfer)
             
             if sap_result.get('success'):
-                # SAP posting successful - update transfer status
+                # SAP posting successful - finalize with posted status
                 sap_doc_number = sap_result.get('document_number')
                 
                 transfer.sap_document_number = sap_doc_number
                 transfer.status = 'posted'
                 transfer.updated_at = datetime.utcnow()
                 
+                # Single atomic commit: QC approval + SAP posting success
                 db.session.commit()
                 
-                logging.info(f"✅ Serial Item Transfer {transfer_id} posted directly to SAP B1 as {sap_doc_number}")
+                logging.info(f"✅ Serial Item Transfer {transfer_id} QC approved and posted directly to SAP B1 as {sap_doc_number}")
                 
                 return jsonify({
                     'success': True,
@@ -582,12 +581,13 @@ def approve_transfer(transfer_id):
                     'sap_document_number': sap_doc_number
                 })
             else:
-                # SAP posting failed - keep as qc_approved for manual intervention
+                # SAP posting failed - finalize with qc_approved status for manual intervention
                 error_msg = sap_result.get('error', 'Unknown SAP error')
                 
                 transfer.status = 'qc_approved'  # Keep as approved but not posted
                 transfer.updated_at = datetime.utcnow()
                 
+                # Single atomic commit: QC approval + SAP posting failure
                 db.session.commit()
                 
                 logging.error(f"❌ SAP posting failed for Serial Item Transfer {transfer_id}: {error_msg}")
@@ -601,7 +601,7 @@ def approve_transfer(transfer_id):
             
         except Exception as e:
             db.session.rollback()
-            logging.error(f"Error in direct SAP posting transaction: {str(e)}")
+            logging.error(f"Error in atomic SAP posting transaction: {str(e)}")
             raise
 
     except Exception as e:
