@@ -1,4 +1,4 @@
-modules = ["web", "python-3.11", "nodejs-20", "postgresql-16"]
+modules = ["python-3.11", "web", "nodejs-20", "bash"]
 
 [nix]
 channel = "stable-25_05"
@@ -24,13 +24,13 @@ args = "WMS Application"
 name = "WMS Application"
 author = "agent"
 
-[workflows.workflow.metadata]
-outputType = "webview"
-
 [[workflows.workflow.tasks]]
 task = "shell.exec"
 args = "uv run gunicorn --bind 0.0.0.0:5000 --reload main:app"
 waitForPort = 5000
+
+[workflows.workflow.metadata]
+outputType = "webview"
 
 [[ports]]
 localPort = 5000
