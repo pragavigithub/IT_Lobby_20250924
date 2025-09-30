@@ -952,10 +952,13 @@ function showSerialTransferApprovalModal(transferId, transferNumber) {
                     `;
                 }
                 
-                showAlert(`✅ Serial Number Transfer approved successfully!\n\n${data.message}\n\nStatus: ${data.status}\nJob ID: ${data.job_id || 'N/A'}`, 'success');
+                showAlert(`✅ Serial Number Transfer approved successfully!\n\n${data.message}\n\nStatus: ${data.status}\nJob ID: ${data.job_id || 'N/A'}\n\nPage will refresh in 3 seconds to show updated status...`, 'success');
                 
-                // Note: Do NOT reload the page - this would interrupt the SAP posting process
-                // The status will update automatically when the background job completes
+                // Auto-refresh after 3 seconds to show final status
+                // The approval is already queued, so refresh won't interrupt the background job
+                setTimeout(() => {
+                    location.reload();
+                }, 3000);
                 
             } else {
                 showAlert(`Error approving serial transfer: ${data.error}`, 'error');
