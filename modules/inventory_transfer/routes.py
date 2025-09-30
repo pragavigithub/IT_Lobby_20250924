@@ -1920,55 +1920,52 @@ def serial_transfer_qc_approve(transfer_id):
     from models import SerialNumberTransfer
     
     try:
-        transfer = SerialNumberTransfer.query.get_or_404(transfer_id)
-        
-        # Check QC permissions
+        # Check QC permissions first (before locking)
         if not current_user.has_permission('qc_dashboard') and current_user.role not in ['admin', 'manager']:
             return jsonify({'success': False, 'error': 'QC permissions required'}), 403
-        
-        # Check if transfer is already being processed or completed (idempotent check)
-        if transfer.status == 'qc_pending_sync':
-            existing_job = SAPJob.query.filter_by(
-                document_type='serial_number_transfer',
-                document_id=transfer.id,
-                status='pending'
-            ).first()
-            return jsonify({
-                'success': True,
-                'message': 'Serial Number Transfer is already approved and being processed in the background.',
-                'status': 'qc_pending_sync',
-                'job_id': existing_job.id if existing_job else None,
-                'already_in_progress': True
-            })
-        elif transfer.status in ['posted', 'qc_approved']:
-            return jsonify({'success': False, 'error': 'Transfer has already been processed'}), 400
-        elif transfer.status != 'submitted':
-            return jsonify({'success': False, 'error': 'Only submitted transfers can be approved'}), 400
-        
-        # Check for existing active SAP job for this document
-        existing_job = SAPJob.query.filter_by(
-            document_type='serial_number_transfer',
-            document_id=transfer.id
-        ).filter(SAPJob.status.in_(['pending', 'processing', 'retrying'])).first()
-        
-        if existing_job:
-            return jsonify({
-                'success': True,
-                'message': 'Transfer approval is already in progress.',
-                'status': 'qc_pending_sync',
-                'job_id': existing_job.id,
-                'already_in_progress': True
-            })
         
         # Get QC notes from request
         data = request.get_json() or {}
         qc_notes = data.get('qc_notes', '')
         
-        # Atomic transaction: Lock document, update status, create job
+        # Atomic transaction: Lock document early to prevent race conditions
         try:
             transfer = db.session.query(SerialNumberTransfer).filter_by(id=transfer_id).with_for_update().first()
             if not transfer:
                 return jsonify({'success': False, 'error': 'Transfer not found'}), 404
+            
+            # Check if transfer is already being processed or completed (idempotent check)
+            if transfer.status == 'qc_pending_sync':
+                existing_job = SAPJob.query.filter_by(
+                    document_type='serial_number_transfer',
+                    document_id=transfer.id
+                ).filter(SAPJob.status.in_(['pending', 'processing', 'retrying'])).first()
+                return jsonify({
+                    'success': True,
+                    'message': 'Serial Number Transfer is already approved and being processed in the background.',
+                    'status': 'qc_pending_sync',
+                    'job_id': existing_job.id if existing_job else None,
+                    'already_in_progress': True
+                })
+            elif transfer.status in ['posted', 'qc_approved']:
+                return jsonify({'success': False, 'error': 'Transfer has already been processed'}), 400
+            elif transfer.status != 'submitted':
+                return jsonify({'success': False, 'error': 'Only submitted transfers can be approved'}), 400
+            
+            # Check for existing active SAP job for this document (within same transaction)
+            existing_job = SAPJob.query.filter_by(
+                document_type='serial_number_transfer',
+                document_id=transfer.id
+            ).filter(SAPJob.status.in_(['pending', 'processing', 'retrying'])).first()
+            
+            if existing_job:
+                return jsonify({
+                    'success': True,
+                    'message': 'Transfer approval is already in progress.',
+                    'status': 'qc_pending_sync',
+                    'job_id': existing_job.id,
+                    'already_in_progress': True
+                })
             
             # Update transfer to pending sync status
             transfer.status = 'qc_pending_sync'
