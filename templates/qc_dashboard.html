@@ -825,26 +825,13 @@ function showSerialTransferApprovalModal(transferId, transferNumber) {
         .then(response => response.json())
         .then(data => {
             if (data.success) {
-                // Update UI to show "In Progress" state immediately
-                const buttonContainer = approveButton.closest('td');
-                if (buttonContainer) {
-                    buttonContainer.innerHTML = `
-                        <div class="d-flex align-items-center">
-                            <div class="spinner-border spinner-border-sm text-warning me-2" role="status">
-                                <span class="visually-hidden">Processing...</span>
-                            </div>
-                            <span class="badge bg-warning">In Progress</span>
-                        </div>
-                    `;
-                }
+                // Show success message - transfer is now processing in background
+                showAlert(`✅ Serial Number Transfer approved successfully! Processing in background...\n\n${data.message}\n\nThe transfer will be posted to SAP B1 automatically. You can leave this page - the process will continue in the background.`, 'success');
                 
-                showAlert(`✅ Serial Number Transfer approved successfully!\n\n${data.message}\n\nStatus: ${data.status}\nJob ID: ${data.job_id || 'N/A'}\n\nPage will refresh in 3 seconds to show updated status...`, 'success');
-                
-                // Auto-refresh after 3 seconds to show final status
-                // The approval is already queued, so refresh won't interrupt the background job
+                // Reload page after 2 seconds to remove approved item from pending list
                 setTimeout(() => {
                     location.reload();
-                }, 3000);
+                }, 2000);
                 
             } else {
                 showAlert(`Error approving serial transfer: ${data.error}`, 'error');

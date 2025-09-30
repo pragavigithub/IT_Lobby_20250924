@@ -205,15 +205,27 @@ class SAPJobWorker:
         """Process a Serial Number Transfer (bulk) posting job"""
         payload = json.loads(job.payload)
         transfer_id = payload['transfer_id']
+        transfer_number = payload.get('transfer_number', 'Unknown')
+        
+        logging.info(f"📦 Starting SAP B1 posting for Serial Number Transfer {transfer_number} (ID: {transfer_id})")
+        logging.info(f"   Job ID: {job.id}, Created: {job.created_at}, Retry Count: {job.retry_count}")
         
         # Get the transfer document using SELECT FOR UPDATE to prevent race conditions
         transfer = db.session.query(SerialNumberTransfer).filter_by(id=transfer_id).with_for_update().first()
         if not transfer:
-            raise ValueError(f"Serial Number Transfer {transfer_id} not found")
-            
-        logging.info(f"📦 Posting Serial Number Transfer {transfer_id} ({transfer.transfer_number}) to SAP B1...")
+            error_msg = f"Serial Number Transfer {transfer_id} not found in database"
+            logging.error(f"❌ {error_msg}")
+            raise ValueError(error_msg)
+        
+        # Log transfer details
+        item_count = len(transfer.items)
+        serial_count = sum(len(item.serial_numbers) for item in transfer.items)
+        logging.info(f"   Transfer Details: {item_count} items, {serial_count} serial numbers")
+        logging.info(f"   From: {transfer.from_warehouse} → To: {transfer.to_warehouse}")
+        logging.info(f"   Approved by: {transfer.qc_approver.username if transfer.qc_approver else 'N/A'}")
         
         # Post to SAP B1
+        logging.info(f"📤 Calling SAP B1 API to create Stock Transfer document...")
         sap_result = self.sap.create_serial_number_stock_transfer(transfer)
         
         if sap_result.get('success'):

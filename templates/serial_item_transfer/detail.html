@@ -13,6 +13,10 @@
             <button type="button" class="btn btn-success" onclick="submitTransfer()">
                 <i class="fas fa-paper-plane"></i> Submit for QC
             </button>
+            {% elif transfer.status == 'rejected' and (transfer.user_id == current_user.id or current_user.role in ['admin', 'manager']) %}
+            <button type="button" class="btn btn-warning" onclick="reopenTransfer()">
+                <i class="fas fa-redo"></i> Reopen Transfer
+            </button>
             {% endif %}
             <a href="{{ url_for('serial_item_transfer.index') }}" class="btn btn-secondary">
                 <i class="fas fa-arrow-left"></i> Back to List
@@ -44,6 +48,12 @@
                 <i class="fas fa-times-circle"></i> This transfer has been <strong>Rejected</strong>.
                 {% if transfer.qc_notes %}
                 <br><strong>QC Notes:</strong> {{ transfer.qc_notes }}
+                {% endif %}
+                {% if transfer.user_id == current_user.id or current_user.role in ['admin', 'manager'] %}
+                <br><br>
+                <button type="button" class="btn btn-warning btn-sm" onclick="reopenTransfer()">
+                    <i class="fas fa-redo"></i> Reopen and Edit Transfer
+                </button>
                 {% endif %}
             </div>
             {% endif %}
@@ -853,6 +863,29 @@ function submitTransfer() {
             error: function(xhr, status, error) {
                 console.error('Error submitting transfer:', error);
                 showAlert('Error submitting transfer', 'error');
+            }
+        });
+    }
+}
+
+function reopenTransfer() {
+    if (confirm('Are you sure you want to reopen this rejected transfer? It will return to Draft status and you can edit and resubmit it.')) {
+        $.ajax({
+            url: '/serial-item-transfer/{{ transfer.id }}/reopen',
+            method: 'POST',
+            success: function(response) {
+                if (response.success) {
+                    showAlert('Transfer reopened successfully! Redirecting...', 'success');
+                    setTimeout(function() {
+                        location.reload();
+                    }, 1500);
+                } else {
+                    showAlert(response.error || 'Error reopening transfer', 'error');
+                }
+            },
+            error: function(xhr, status, error) {
+                console.error('Error reopening transfer:', error);
+                showAlert('Error reopening transfer', 'error');
             }
         });
     }

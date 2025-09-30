@@ -2127,12 +2127,17 @@ def serial_transfer_qc_approve(transfer_id):
             })
             sap_job.created_at = datetime.utcnow()
             
+            logging.info(f"🔄 Creating SAP job for Serial Number Transfer {transfer.transfer_number} (Transfer ID: {transfer.id})")
+            logging.info(f"   Job Type: {sap_job.job_type}, Document Type: {sap_job.document_type}")
+            logging.info(f"   Transfer has {len(transfer.items)} items with {sum(len(item.serial_numbers) for item in transfer.items)} total serial numbers")
+            
             db.session.add(sap_job)
             
             # 4. Single atomic commit for all changes
             db.session.commit()
             
-            logging.info(f"🔄 Serial Number Transfer {transfer.transfer_number} approved and queued for SAP posting (Job #{sap_job.id}) by {current_user.username}")
+            logging.info(f"✅ Serial Number Transfer {transfer.transfer_number} approved and queued for SAP posting (Job #{sap_job.id}) by {current_user.username}")
+            logging.info(f"   Job will be picked up by SAP Job Worker within 10 seconds")
             
             return jsonify({
                 'success': True,

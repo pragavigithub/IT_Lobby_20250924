@@ -680,6 +680,49 @@ def reject_transfer(transfer_id):
         return redirect(url_for('qc_dashboard'))
 
 
+@serial_item_bp.route('/<int:transfer_id>/reopen', methods=['POST'])
+@login_required
+def reopen_transfer(transfer_id):
+    """Reopen a rejected Serial Item Transfer"""
+    try:
+        transfer = SerialItemTransfer.query.get_or_404(transfer_id)
+        
+        # Check permissions - allow transfer owner, admin, or manager to reopen
+        if transfer.user_id != current_user.id and current_user.role not in ['admin', 'manager']:
+            return jsonify({'success': False, 'error': 'Access denied - You can only reopen your own transfers'}), 403
+        
+        if transfer.status != 'rejected':
+            return jsonify({'success': False, 'error': 'Only rejected transfers can be reopened'}), 400
+        
+        # Reset transfer to draft status
+        old_status = transfer.status
+        transfer.status = 'draft'
+        transfer.qc_approver_id = None
+        transfer.qc_approved_at = None
+        transfer.qc_notes = None
+        transfer.updated_at = datetime.utcnow()
+        
+        # Reset all items to pending status
+        for item in transfer.items:
+            item.qc_status = 'pending'
+            item.updated_at = datetime.utcnow()
+        
+        db.session.commit()
+        
+        logging.info(f"Serial Item Transfer {transfer_id} ({transfer.transfer_number}) reopened and reset to draft status by {current_user.username}")
+        
+        return jsonify({
+            'success': True,
+            'message': f'Serial Item Transfer {transfer.transfer_number} reopened successfully. You can now edit and resubmit it.',
+            'status': 'draft'
+        })
+        
+    except Exception as e:
+        logging.error(f"Error reopening serial item transfer: {str(e)}")
+        db.session.rollback()
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
 @serial_item_bp.route('/<int:transfer_id>/validate_serial_only', methods=['POST'])
 @login_required
 def validate_serial_only(transfer_id):
