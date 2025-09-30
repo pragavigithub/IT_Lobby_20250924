@@ -17,3 +17,23 @@ The application is built with Flask, utilizing HTML templates with Bootstrap for
 - **Flask-Login**: For user authentication and session management.
 - **uv package manager**: For managing Python dependencies.
 - **Bootstrap**: Frontend styling and components.
+
+## Recent Changes (September 30, 2025)
+- Successfully configured the application to run in Replit environment
+- Updated logging path from Windows-style `C:/tmp/wms_logs` to Linux-style `/tmp/wms_logs`
+- Configured workflow to run on port 5000 with webview output type
+- Connected to Replit's PostgreSQL database successfully
+- Database tables created and default data initialized (default branch and admin user)
+- Deployment configuration set for autoscale deployment target
+- Application is fully functional and ready to use
+
+## Default Credentials
+- Username: `admin`
+- Password: `admin123`
+- Note: Admin user must change password on first login
+
+## Configuration Notes
+- The application supports both MySQL (via JSON credentials file) and PostgreSQL (Replit managed)
+- In Replit environment, it automatically uses PostgreSQL database
+- SAP B1 credentials are optional and can be configured via environment variables or JSON file
+- License validation is skipped in Replit environment

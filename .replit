@@ -1,4 +1,4 @@
-modules = ["python-3.11", "web", "nodejs-20", "bash", "postgresql-16"]
+modules = ["python-3.11", "web", "nodejs-20", "bash"]
 
 [nix]
 channel = "stable-25_05"
@@ -6,7 +6,7 @@ packages = ["cacert", "cargo", "freetype", "lcms2", "libffi", "libiconv", "libim
 
 [deployment]
 deploymentTarget = "autoscale"
-run = ["uv", "run", "gunicorn", "--bind", "0.0.0.0:5000", "main:app"]
+run = ["gunicorn", "--bind", "0.0.0.0:5000", "main:app"]
 
 [workflows]
 runButton = "Project"
@@ -24,20 +24,20 @@ args = "WMS Application"
 name = "WMS Application"
 author = "agent"
 
-[workflows.workflow.metadata]
-outputType = "webview"
-
 [[workflows.workflow.tasks]]
 task = "shell.exec"
 args = "uv run gunicorn --bind 0.0.0.0:5000 --reuse-port --reload main:app"
 waitForPort = 5000
+
+[workflows.workflow.metadata]
+outputType = "webview"
 
 [[ports]]
 localPort = 5000
 externalPort = 80
 
 [[ports]]
-localPort = 39173
+localPort = 35297
 externalPort = 3001
 
 [[ports]]

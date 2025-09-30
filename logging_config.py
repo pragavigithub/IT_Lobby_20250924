@@ -17,7 +17,7 @@ def setup_logging(app):
     """
     # Logging configuration (equivalent to .env settings)
     LOG_LEVEL = os.environ.get('LOG_LEVEL', 'INFO').upper()
-    LOG_PATH = os.environ.get('LOG_PATH', 'C:/tmp/wms_logs')
+    LOG_PATH = os.environ.get('LOG_PATH', '/tmp/wms_logs')
     LOG_FILE_PREFIX = os.environ.get('LOG_FILE_PREFIX', 'wms')
     LOG_MAX_SIZE = int(os.environ.get('LOG_MAX_SIZE', '10485760'))  # 10MB
     LOG_BACKUP_COUNT = int(os.environ.get('LOG_BACKUP_COUNT', '5'))
