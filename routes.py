@@ -1899,15 +1899,15 @@ def qc_dashboard():
     # Get pending GRPOs for QC approval
     pending_grpos = GRPODocument.query.filter_by(status='submitted').order_by(GRPODocument.created_at.desc()).all()
 
-    # Get pending Serial Number Transfers for QC approval (includes submitted and in-progress)
+    # Get pending Serial Number Transfers for QC approval (only submitted status)
     from models import SerialNumberTransfer, SerialItemTransfer
-    pending_serial_transfers = SerialNumberTransfer.query.filter(
-        SerialNumberTransfer.status.in_(['submitted', 'qc_pending_sync'])
+    pending_serial_transfers = SerialNumberTransfer.query.filter_by(
+        status='submitted'
     ).order_by(SerialNumberTransfer.created_at.desc()).all()
 
-    # Get pending Serial Item Transfers for QC approval (includes submitted and in-progress)
-    pending_serial_item_transfers = SerialItemTransfer.query.filter(
-        SerialItemTransfer.status.in_(['submitted', 'qc_pending_sync'])
+    # Get pending Serial Item Transfers for QC approval (only submitted status)
+    pending_serial_item_transfers = SerialItemTransfer.query.filter_by(
+        status='submitted'
     ).order_by(SerialItemTransfer.created_at.desc()).all()
 
     # Get QC approved Serial Item Transfers ready for SAP posting
@@ -1918,45 +1918,6 @@ def qc_dashboard():
     from modules.invoice_creation.models import InvoiceDocument
     pending_invoices = InvoiceDocument.query.filter_by(status='pending_qc').order_by(
         InvoiceDocument.created_at.desc()).all()
-    
-    # Get documents pending SAP sync (approved but waiting for SAP posting)
-    from models import SAPJob
-    
-    pending_sync_grpos = GRPODocument.query.filter_by(status='qc_pending_sync').order_by(GRPODocument.qc_approved_at.desc()).all()
-    pending_sync_serial_transfers = SerialNumberTransfer.query.filter_by(status='qc_pending_sync').order_by(SerialNumberTransfer.qc_approved_at.desc()).all()
-    pending_sync_serial_item_transfers = SerialItemTransfer.query.filter_by(status='qc_pending_sync').order_by(SerialItemTransfer.qc_approved_at.desc()).all()
-    
-    # Get corresponding SAP jobs for these documents
-    pending_sap_jobs = []
-    for grpo in pending_sync_grpos:
-        job = SAPJob.query.filter_by(document_type='grpo', document_id=grpo.id).order_by(SAPJob.created_at.desc()).first()
-        if job:
-            pending_sap_jobs.append({
-                'job': job,
-                'document': grpo,
-                'document_type': 'GRPO',
-                'document_number': grpo.po_number
-            })
-    
-    for transfer in pending_sync_serial_transfers:
-        job = SAPJob.query.filter_by(document_type='serial_number_transfer', document_id=transfer.id).order_by(SAPJob.created_at.desc()).first()
-        if job:
-            pending_sap_jobs.append({
-                'job': job,
-                'document': transfer,
-                'document_type': 'Serial Number Transfer',
-                'document_number': transfer.transfer_number
-            })
-    
-    for transfer in pending_sync_serial_item_transfers:
-        job = SAPJob.query.filter_by(document_type='serial_item_transfer', document_id=transfer.id).order_by(SAPJob.created_at.desc()).first()
-        if job:
-            pending_sap_jobs.append({
-                'job': job,
-                'document': transfer,
-                'document_type': 'Serial Item Transfer',
-                'document_number': transfer.transfer_number
-            })
 
     # Calculate metrics for today
     from datetime import datetime, date
@@ -2248,9 +2209,7 @@ def qc_dashboard():
                            approved_today=approved_today,
                            qc_approved_serial_item_transfers=qc_approved_serial_item_transfers,
                            rejected_today=rejected_today,
-                           avg_processing_time=avg_processing_time,
-                           pending_sap_jobs=pending_sap_jobs,
-                           pending_sync_count=len(pending_sap_jobs))
+                           avg_processing_time=avg_processing_time)
 
 
 @app.route('/api/sap_job_status/<int:job_id>')
