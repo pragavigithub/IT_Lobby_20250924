@@ -1899,15 +1899,15 @@ def qc_dashboard():
     # Get pending GRPOs for QC approval
     pending_grpos = GRPODocument.query.filter_by(status='submitted').order_by(GRPODocument.created_at.desc()).all()
 
-    # Get pending Serial Number Transfers for QC approval (only submitted status)
+    # Get pending Serial Number Transfers for QC approval (submitted + in-progress)
     from models import SerialNumberTransfer, SerialItemTransfer
-    pending_serial_transfers = SerialNumberTransfer.query.filter_by(
-        status='submitted'
+    pending_serial_transfers = SerialNumberTransfer.query.filter(
+        SerialNumberTransfer.status.in_(['submitted', 'qc_pending_sync'])
     ).order_by(SerialNumberTransfer.created_at.desc()).all()
 
-    # Get pending Serial Item Transfers for QC approval (only submitted status)
-    pending_serial_item_transfers = SerialItemTransfer.query.filter_by(
-        status='submitted'
+    # Get pending Serial Item Transfers for QC approval (submitted + in-progress)
+    pending_serial_item_transfers = SerialItemTransfer.query.filter(
+        SerialItemTransfer.status.in_(['submitted', 'qc_pending_sync'])
     ).order_by(SerialItemTransfer.created_at.desc()).all()
 
     # Get QC approved Serial Item Transfers ready for SAP posting

@@ -111,6 +111,7 @@
                                         <small>{{ transfer.created_at.strftime('%Y-%m-%d %H:%M') }}</small>
                                     </td>
                                     <td>
+                                        {% if transfer.status == 'submitted' %}
                                         <div class="btn-group" role="group">
                                             <a href="{{ url_for('inventory_transfer.serial_detail', transfer_id=transfer.id) }}" class="btn btn-sm btn-outline-primary">
                                                 <i data-feather="eye"></i> Review
@@ -122,6 +123,19 @@
                                                 <i data-feather="x"></i> Reject
                                             </button>
                                         </div>
+                                        {% elif transfer.status == 'qc_pending_sync' %}
+                                        <div class="d-flex align-items-center">
+                                            <div class="spinner-border spinner-border-sm text-warning me-2" role="status">
+                                                <span class="visually-hidden">Processing...</span>
+                                            </div>
+                                            <span class="badge bg-warning text-dark">In Progress</span>
+                                            <a href="{{ url_for('inventory_transfer.serial_detail', transfer_id=transfer.id) }}" class="btn btn-sm btn-outline-primary ms-2">
+                                                <i data-feather="eye"></i> View
+                                            </a>
+                                        </div>
+                                        {% else %}
+                                        <span class="badge bg-secondary">{{ transfer.status|title }}</span>
+                                        {% endif %}
                                     </td>
                                 </tr>
                                 {% endfor %}
@@ -208,6 +222,7 @@
                                         <small>{{ transfer.created_at.strftime('%Y-%m-%d %H:%M') }}</small>
                                     </td>
                                     <td>
+                                        {% if transfer.status == 'submitted' %}
                                         <div class="btn-group" role="group">
                                             <a href="{{ url_for('serial_item_transfer.detail', transfer_id=transfer.id) }}" class="btn btn-sm btn-outline-primary">
                                                 <i data-feather="eye"></i> Review
@@ -219,6 +234,19 @@
                                                 <i data-feather="x"></i> Reject
                                             </button>
                                         </div>
+                                        {% elif transfer.status == 'qc_pending_sync' %}
+                                        <div class="d-flex align-items-center">
+                                            <div class="spinner-border spinner-border-sm text-warning me-2" role="status">
+                                                <span class="visually-hidden">Processing...</span>
+                                            </div>
+                                            <span class="badge bg-warning text-dark">In Progress</span>
+                                            <a href="{{ url_for('serial_item_transfer.detail', transfer_id=transfer.id) }}" class="btn btn-sm btn-outline-primary ms-2">
+                                                <i data-feather="eye"></i> View
+                                            </a>
+                                        </div>
+                                        {% else %}
+                                        <span class="badge bg-secondary">{{ transfer.status|title }}</span>
+                                        {% endif %}
                                     </td>
                                 </tr>
                                 {% endfor %}
