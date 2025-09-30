@@ -5,13 +5,12 @@ All routes related to inventory transfers between warehouses/bins
 from flask import Blueprint, render_template, request, redirect, url_for, flash, jsonify
 from flask_login import login_required, current_user
 from app import db
-from models import InventoryTransfer, InventoryTransferItem, User, SerialNumberTransfer, SerialNumberTransferItem, SerialNumberTransferSerial, SAPJob
+from models import InventoryTransfer, InventoryTransferItem, User, SerialNumberTransfer, SerialNumberTransferItem, SerialNumberTransferSerial
 from sqlalchemy import or_, func
 import logging
 import random
 import re
 import string
-import json
 from datetime import datetime
 
 transfer_bp = Blueprint('inventory_transfer', __name__, 
@@ -293,7 +292,7 @@ def submit(transfer_id):
 @transfer_bp.route('/<int:transfer_id>/qc_approve', methods=['POST'])
 @login_required
 def qc_approve(transfer_id):
-    """QC approve transfer and queue for SAP B1 posting"""
+    """QC approve transfer and post to SAP B1"""
     try:
         transfer = InventoryTransfer.query.get_or_404(transfer_id)
         
@@ -301,130 +300,56 @@ def qc_approve(transfer_id):
         if not current_user.has_permission('qc_dashboard') and current_user.role not in ['admin', 'manager']:
             return jsonify({'success': False, 'error': 'QC permissions required'}), 403
         
-        # Check if transfer is already being processed or completed
-        if transfer.status == 'qc_pending_sync':
-            # Already approved and in progress - return success (idempotent)
-            existing_job = SAPJob.query.filter_by(
-                document_type='inventory_transfer',
-                document_id=transfer.id,
-                status='pending'
-            ).first()
-            return jsonify({
-                'success': True,
-                'message': 'Inventory Transfer is already approved and being processed in the background.',
-                'status': 'qc_pending_sync',
-                'job_id': existing_job.id if existing_job else None,
-                'already_in_progress': True
-            })
-        elif transfer.status in ['posted', 'qc_approved']:
-            return jsonify({'success': False, 'error': 'Transfer has already been processed'}), 400
-        elif transfer.status != 'submitted':
+        if transfer.status != 'submitted':
             return jsonify({'success': False, 'error': 'Only submitted transfers can be approved'}), 400
         
-        # Check for existing active SAP job for this document
-        existing_job = SAPJob.query.filter_by(
-            document_type='inventory_transfer',
-            document_id=transfer.id
-        ).filter(SAPJob.status.in_(['pending', 'processing', 'retrying'])).first()
-        
-        if existing_job:
-            # Job already exists - return success (idempotent)
-            return jsonify({
-                'success': True,
-                'message': 'Inventory Transfer approval is already in progress.',
-                'status': 'qc_pending_sync',
-                'job_id': existing_job.id,
-                'already_in_progress': True
-            })
-
         # Get QC notes
-        qc_notes = ''
-        if request.form:
-            qc_notes = request.form.get('qc_notes', '').strip()
-        elif request.json:
-            qc_notes = request.json.get('qc_notes', '').strip()
-
-        # Atomic transaction: status update + job creation
-        try:
-            # Lock the document for update
-            transfer = db.session.query(InventoryTransfer).filter_by(id=transfer_id).with_for_update().first()
-            if not transfer:
-                return jsonify({'success': False, 'error': 'Transfer not found'}), 404
-            
-            # Double-check status and existing jobs inside transaction
-            if transfer.status != 'submitted':
-                db.session.rollback()
-                if transfer.status == 'qc_pending_sync':
-                    return jsonify({
-                        'success': True,
-                        'message': 'Inventory Transfer is already approved and being processed.',
-                        'status': 'qc_pending_sync',
-                        'already_in_progress': True
-                    })
-                return jsonify({'success': False, 'error': f'Transfer status is {transfer.status}, cannot approve'}), 400
-            
-            # Check for existing active job inside transaction
-            existing_job = SAPJob.query.filter_by(
-                document_type='inventory_transfer',
-                document_id=transfer.id
-            ).filter(SAPJob.status.in_(['pending', 'processing', 'retrying'])).first()
-            
-            if existing_job:
-                db.session.rollback()
-                return jsonify({
-                    'success': True,
-                    'message': 'Inventory Transfer approval is already in progress.',
-                    'status': 'qc_pending_sync',
-                    'job_id': existing_job.id,
-                    'already_in_progress': True
-                })
-            
-            # Update transfer status to pending SAP sync
-            transfer.status = 'qc_pending_sync'
-            transfer.qc_approver_id = current_user.id
-            transfer.qc_approved_at = datetime.utcnow()
-            transfer.qc_notes = qc_notes
-            transfer.updated_at = datetime.utcnow()
-
-            # Mark items as approved
-            for item in transfer.items:
-                item.qc_status = 'approved'
-                item.updated_at = datetime.utcnow()
-
-            # Create SAP job for background processing
-            sap_job = SAPJob(
-                job_type='inventory_transfer_post',
-                document_type='inventory_transfer',
-                document_id=transfer.id,
-                status='pending',
-                payload=json.dumps({
-                    'transfer_id': transfer.id,
-                    'user_id': current_user.id,
-                    'qc_notes': qc_notes
-                }),
-                user_id=current_user.id
-            )
-
-            db.session.add(sap_job)
-            db.session.commit()
-            
-        except Exception as e:
+        qc_notes = request.json.get('qc_notes', '') if request.is_json else request.form.get('qc_notes', '')
+        
+        # Mark items as approved
+        for item in transfer.items:
+            item.qc_status = 'approved'
+        
+        # Update transfer status
+        old_status = transfer.status
+        transfer.status = 'qc_approved'
+        transfer.qc_approver_id = current_user.id
+        transfer.qc_approved_at = datetime.utcnow()
+        transfer.qc_notes = qc_notes
+        
+        # Post to SAP B1 as Stock Transfer - MUST succeed for approval
+        from sap_integration import SAPIntegration
+        sap = SAPIntegration()
+        
+        logging.info(f"Posting Inventory Transfer {transfer_id} to SAP B1...")
+        sap_result = sap.post_inventory_transfer_to_sap(transfer)
+        
+        if not sap_result.get('success'):
+            # Rollback approval if SAP posting fails
             db.session.rollback()
-            logging.error(f"Error in atomic approval transaction: {str(e)}")
-            raise
-
-        logging.info(f"✅ Inventory Transfer {transfer_id} QC approved and queued for SAP B1 posting (Job #{sap_job.id})")
-
+            sap_error = sap_result.get('error', 'Unknown SAP error')
+            logging.error(f" SAP B1 posting failed: {sap_error}")
+            return jsonify({'success': False, 'error': f'SAP B1 posting failed: {sap_error}'}), 500
+        
+        # SAP posting succeeded - update with document number
+        transfer.sap_document_number = sap_result.get('document_number')
+        transfer.status = 'posted'
+        logging.info(f" Successfully posted to SAP B1: {transfer.sap_document_number}")
+        
+        db.session.commit()
+        
+        # Log status change
+        log_status_change(transfer_id, old_status, 'posted', current_user.id, f'Transfer QC approved and posted to SAP B1 as {transfer.sap_document_number}')
+        
+        logging.info(f" Inventory Transfer {transfer_id} QC approved and posted to SAP B1")
         return jsonify({
             'success': True,
-            'message': f'Inventory Transfer approved successfully! SAP posting is being processed in the background.',
-            'status': 'qc_pending_sync',
-            'job_id': sap_job.id
+            'message': f'Transfer QC approved and posted to SAP B1 as {transfer.sap_document_number}',
+            'sap_document_number': transfer.sap_document_number
         })
         
     except Exception as e:
         logging.error(f"Error approving transfer: {str(e)}")
-        db.session.rollback()
         return jsonify({'success': False, 'error': str(e)}), 500
 
 @transfer_bp.route('/<int:transfer_id>/qc_reject', methods=['POST'])
@@ -1762,11 +1687,6 @@ def pre_validate_serials_api():
         serial_numbers_text = request.form.get('serial_numbers', '').strip()
         warehouse_code = request.form.get('warehouse_code', '').strip()
         
-        # New parameters for incremental validation optimization
-        incremental_validation = request.form.get('incremental_validation', 'false').lower() == 'true'
-        previous_results_json = request.form.get('previous_results', '')
-        all_serials_text = request.form.get('all_serials', '')
-        
         if not all([item_code, expected_quantity, serial_numbers_text]):
             return jsonify({
                 'success': False,
@@ -1806,82 +1726,50 @@ def pre_validate_serials_api():
                 duplicates.append(sn)
             serial_number_count[sn] = serial_number_count.get(sn, 0) + 1
         
-        # Handle incremental validation optimization
+        # Validate each serial number against SAP
         validation_results = {}
+        valid_count = 0
+        invalid_count = 0
         
-        if incremental_validation and previous_results_json:
-            # Parse previous validation results
-            import json
-            try:
-                previous_results = json.loads(previous_results_json)
-                validation_results.update(previous_results)
-                logging.info(f"⚡ Incremental validation: loaded {len(previous_results)} previous results")
-            except json.JSONDecodeError:
-                logging.warning("Failed to parse previous results, falling back to full validation")
-                incremental_validation = False
+        logging.info(f"Pre-validating {len(serial_numbers)} serial numbers for item {item_code}")
         
-        # Determine which serials to validate
-        serials_to_validate = serial_numbers
-        
-        if incremental_validation:
-            # Only validate new serials that aren't in previous results
-            serials_to_validate = [sn for sn in serial_numbers if sn not in validation_results]
-            logging.info(f"⚡ Optimized validation: validating only {len(serials_to_validate)} new serials instead of all {len(serial_numbers)}")
+        # Use batch validation for better performance
+        if len(serial_numbers) > 10:
+            # Use batch validation for large sets
+            batch_results = validate_batch_series_with_warehouse_sap(serial_numbers, item_code, warehouse_code)
+            for serial, result in batch_results.items():
+                validation_results[serial] = result
+                if result.get('valid'):
+                    valid_count += 1
+                else:
+                    invalid_count += 1
         else:
-            logging.info(f"📋 Full validation: validating all {len(serial_numbers)} serial numbers")
-        
-        # Validate new serial numbers against SAP
-        if serials_to_validate:
-            # Use batch validation for better performance
-            if len(serials_to_validate) > 10:
-                # Use batch validation for large sets
-                batch_results = validate_batch_series_with_warehouse_sap(serials_to_validate, item_code, warehouse_code)
-                for serial, result in batch_results.items():
-                    validation_results[serial] = result
-            else:
-                # Use individual validation for small sets
-                for serial_number in serials_to_validate:
-                    if serial_number in duplicates:
-                        validation_results[serial_number] = {
-                            'valid': False,
-                            'error': 'Duplicate serial number in input',
-                            'validation_type': 'duplicate'
-                        }
+            # Use individual validation for small sets
+            for serial_number in serial_numbers:
+                if serial_number in duplicates:
+                    validation_results[serial_number] = {
+                        'valid': False,
+                        'error': 'Duplicate serial number in input',
+                        'validation_type': 'duplicate'
+                    }
+                    invalid_count += 1
+                else:
+                    result = validate_series_with_warehouse_sap(serial_number, item_code, warehouse_code)
+                    validation_results[serial_number] = result
+                    if result.get('valid'):
+                        valid_count += 1
                     else:
-                        result = validate_series_with_warehouse_sap(serial_number, item_code, warehouse_code)
-                        validation_results[serial_number] = result
-        
-        # If this is incremental validation, we need to consider all current serials for final summary
-        if incremental_validation and all_serials_text:
-            # Parse all current serials to get the complete picture
-            import re
-            all_current_serials = re.split(r'[,\n\r\s]+', all_serials_text.strip())
-            all_current_serials = [sn.strip() for sn in all_current_serials if sn.strip()]
-            
-            # Filter validation results to only include current serials (removes deleted ones)
-            filtered_validation_results = {}
-            for serial in all_current_serials:
-                if serial in validation_results:
-                    filtered_validation_results[serial] = validation_results[serial]
-            
-            validation_results = filtered_validation_results
-        
-        # Count valid and invalid results
-        valid_count = sum(1 for result in validation_results.values() if result.get('valid'))
-        invalid_count = len(validation_results) - valid_count
+                        invalid_count += 1
         
         # Check quantity matching
         quantity_match = valid_count == expected_qty
         quantity_status = 'exact' if quantity_match else ('excess' if valid_count > expected_qty else 'insufficient')
         
-        # Calculate total serials for summary (use all current serials for incremental validation)
-        total_serials_count = len(validation_results) if incremental_validation and all_serials_text else len(serial_numbers)
-        
         # Prepare response
         response_data = {
             'success': True,
             'validation_summary': {
-                'total_serials': total_serials_count,
+                'total_serials': len(serial_numbers),
                 'valid_count': valid_count,
                 'invalid_count': invalid_count,
                 'expected_quantity': expected_qty,
@@ -1891,29 +1779,20 @@ def pre_validate_serials_api():
             },
             'validation_results': validation_results,
             'duplicates': duplicates,
-            'can_proceed': quantity_match,  # Only allow proceeding if quantity matches exactly
-            'incremental_validation': incremental_validation,
-            'serials_validated_this_request': len(serials_to_validate) if serials_to_validate else 0
+            'can_proceed': quantity_match  # Only allow proceeding if quantity matches exactly
         }
         
-        # Add appropriate message with optimization info
-        optimization_info = ""
-        if incremental_validation and serials_to_validate:
-            optimization_info = f" (⚡ Optimized: validated only {len(serials_to_validate)} new serials)"
-        
+        # Add appropriate message
         if quantity_match:
-            response_data['message'] = f'Validation successful! All {valid_count} serial numbers are valid and match expected quantity.{optimization_info}'
+            response_data['message'] = f'Validation successful! All {valid_count} serial numbers are valid and match expected quantity.'
         elif valid_count > expected_qty:
             excess = valid_count - expected_qty
-            response_data['message'] = f'Too many valid serials! Found {valid_count} valid serials but expected {expected_qty}. Please remove {excess} serial number(s).{optimization_info}'
+            response_data['message'] = f'Too many valid serials! Found {valid_count} valid serials but expected {expected_qty}. Please remove {excess} serial number(s).'
         else:
             missing = expected_qty - valid_count
-            response_data['message'] = f'Insufficient valid serials! Found {valid_count} valid serials but expected {expected_qty}. You need {missing} more valid serial number(s).{optimization_info}'
+            response_data['message'] = f'Insufficient valid serials! Found {valid_count} valid serials but expected {expected_qty}. You need {missing} more valid serial number(s).'
         
-        if incremental_validation:
-            logging.info(f"⚡ Incremental validation complete: {valid_count}/{total_serials_count} valid, quantity match: {quantity_match}, validated {len(serials_to_validate)} new serials")
-        else:
-            logging.info(f"📋 Full validation complete: {valid_count}/{total_serials_count} valid, quantity match: {quantity_match}")
+        logging.info(f"Pre-validation complete: {valid_count}/{len(serial_numbers)} valid, quantity match: {quantity_match}")
         
         return jsonify(response_data)
         
@@ -2036,121 +1915,77 @@ def serial_add_validated_item(transfer_id):
 @transfer_bp.route('/serial/<int:transfer_id>/qc_approve', methods=['POST'])
 @login_required 
 def serial_transfer_qc_approve(transfer_id):
-    """QC approve serial number transfer and queue for SAP B1 posting (idempotent)"""
-    from models import SerialNumberTransfer, SAPJob
-    from sqlalchemy import text
+    """QC approve serial number transfer and post to SAP B1"""
+    from models import SerialNumberTransfer
     
     try:
-        # Pessimistic lock to prevent race conditions
-        transfer = db.session.query(SerialNumberTransfer).filter_by(id=transfer_id).with_for_update().first()
-        if not transfer:
-            return jsonify({'success': False, 'error': 'Transfer not found'}), 404
+        transfer = SerialNumberTransfer.query.get_or_404(transfer_id)
         
         # Check QC permissions
         if not current_user.has_permission('qc_dashboard') and current_user.role not in ['admin', 'manager']:
             return jsonify({'success': False, 'error': 'QC permissions required'}), 403
         
-        # **IDEMPOTENCY CHECK** - Handle already processed transfers
-        if transfer.status == 'qc_pending_sync':
-            # Already approved and in progress - return success (idempotent)
-            existing_job = SAPJob.query.filter_by(
-                document_type='serial_number_transfer',
-                document_id=transfer.id,
-                status='pending'
-            ).first()
-            return jsonify({
-                'success': True,
-                'message': 'Serial Number Transfer is already approved and being processed in the background.',
-                'status': 'qc_pending_sync',
-                'job_id': existing_job.id if existing_job else None,
-                'already_in_progress': True
-            })
-        elif transfer.status == 'posted':
-            return jsonify({
-                'success': True,
-                'message': f'Serial Number Transfer is already posted to SAP B1. Document Number: {transfer.sap_document_number}',
-                'status': 'posted',
-                'sap_document_number': transfer.sap_document_number,
-                'already_processed': True
-            })
-        elif transfer.status == 'qc_approved':
-            return jsonify({'success': False, 'error': 'Transfer has already been QC approved but not yet posted'}), 400
-        elif transfer.status != 'submitted':
-            return jsonify({'success': False, 'error': f'Transfer status is {transfer.status}, cannot approve'}), 400
-        
-        # Check for existing active SAP job for this document
-        existing_job = SAPJob.query.filter_by(
-            document_type='serial_number_transfer',
-            document_id=transfer.id
-        ).filter(SAPJob.status.in_(['pending', 'processing', 'retrying'])).first()
-        
-        if existing_job:
-            # Job already exists - return success (idempotent)
-            return jsonify({
-                'success': True,
-                'message': 'Serial Number Transfer approval is already in progress.',
-                'status': 'qc_pending_sync',
-                'job_id': existing_job.id,
-                'already_in_progress': True
-            })
+        if transfer.status != 'submitted':
+            return jsonify({'success': False, 'error': 'Only submitted transfers can be approved'}), 400
         
         # Get QC notes from request
         data = request.get_json() or {}
         qc_notes = data.get('qc_notes', '')
         
-        # **ATOMIC TRANSACTION** - Update status to "In Progress" and queue background job
+        # **SAP B1 POSTING** - Create Stock Transfer in SAP B1
+        from sap_integration import SAPIntegration
+        sap_b1 = SAPIntegration()
+        sap_document_number = None
+        sap_error = None
+        
         try:
-            # 1. Update transfer status to 'qc_pending_sync' (In Progress)
-            transfer.status = 'qc_pending_sync'
-            transfer.qc_approver_id = current_user.id
-            transfer.qc_approved_at = datetime.utcnow()
-            transfer.qc_notes = qc_notes
-            transfer.updated_at = datetime.utcnow()
+            logging.info(f"Posting Serial Number Transfer {transfer.transfer_number} to SAP B1...")
             
-            # 2. Update all items to approved status
-            for item in transfer.items:
-                item.qc_status = 'approved'
-                item.updated_at = datetime.utcnow()
+            # Create Stock Transfer in SAP B1
+            sap_result = sap_b1.create_serial_number_stock_transfer(transfer)
             
-            # 3. Create background job for SAP B1 posting
-            sap_job = SAPJob()
-            sap_job.job_type = 'serial_number_transfer_post'
-            sap_job.document_type = 'serial_number_transfer'
-            sap_job.document_id = transfer.id
-            sap_job.status = 'pending'
-            sap_job.user_id = current_user.id
-            sap_job.payload = json.dumps({
-                'transfer_id': transfer.id,
-                'transfer_number': transfer.transfer_number,
-                'qc_notes': qc_notes,
-                'approved_by': current_user.username
-            })
-            sap_job.created_at = datetime.utcnow()
-            
-            logging.info(f"🔄 Creating SAP job for Serial Number Transfer {transfer.transfer_number} (Transfer ID: {transfer.id})")
-            logging.info(f"   Job Type: {sap_job.job_type}, Document Type: {sap_job.document_type}")
-            logging.info(f"   Transfer has {len(transfer.items)} items with {sum(len(item.serial_numbers) for item in transfer.items)} total serial numbers")
-            
-            db.session.add(sap_job)
-            
-            # 4. Single atomic commit for all changes
-            db.session.commit()
-            
-            logging.info(f"✅ Serial Number Transfer {transfer.transfer_number} approved and queued for SAP posting (Job #{sap_job.id}) by {current_user.username}")
-            logging.info(f"   Job will be picked up by SAP Job Worker within 10 seconds")
-            
-            return jsonify({
-                'success': True,
-                'message': f'Serial Number Transfer {transfer.transfer_number} approved successfully! Processing in background...',
-                'transfer_id': transfer_id,
-                'status': 'qc_pending_sync',
-                'job_id': sap_job.id
-            })
-            
+            if sap_result.get('success'):
+                sap_document_number = sap_result.get('document_number')
+                logging.info(f" Successfully posted to SAP B1: Document {sap_document_number}")
+            else:
+                sap_error = sap_result.get('error', 'Unknown SAP error')
+                logging.error(f" SAP B1 posting failed: {sap_error}")
+                
         except Exception as e:
-            db.session.rollback()
-            logging.error(f"Error in atomic approval transaction: {str(e)}")
-            raise
+            sap_error = str(e)
+            logging.error(f" SAP B1 posting exception: {str(e)}")
+        
+        # Update transfer status to approved (regardless of SAP result for now)
+        transfer.status = 'Posted'
+        transfer.qc_approver_id = current_user.id
+        transfer.qc_approved_at = datetime.utcnow()
+        transfer.qc_notes = qc_notes
+        transfer.sap_document_number = sap_document_number
+        
+        # Update all items to approved status
+        for item in transfer.items:
+            item.qc_status = 'approved'
+        
+        db.session.commit()
+        
+        logging.info(f" Serial Number Transfer {transfer.transfer_number} approved by QC user {current_user.username}")
+        
+        # Prepare response message
+        if sap_document_number:
+            message = f'Serial Number Transfer {transfer.transfer_number} approved and posted to SAP B1 as {sap_document_number}'
+        elif sap_error:
+            message = f'Serial Number Transfer {transfer.transfer_number} approved locally. SAP posting failed: {sap_error}'
+        else:
+            message = f'Serial Number Transfer {transfer.transfer_number} approved successfully'
+        
+        return jsonify({
+            'success': True,
+            'message': message,
+            'transfer_id': transfer_id,
+            'status': 'qc_approved',
+            'sap_document_number': sap_document_number,
+            'sap_error': sap_error
+        })
         
     except Exception as e:
         db.session.rollback()

@@ -111,7 +111,6 @@
                                         <small>{{ transfer.created_at.strftime('%Y-%m-%d %H:%M') }}</small>
                                     </td>
                                     <td>
-                                        {% if transfer.status == 'submitted' %}
                                         <div class="btn-group" role="group">
                                             <a href="{{ url_for('inventory_transfer.serial_detail', transfer_id=transfer.id) }}" class="btn btn-sm btn-outline-primary">
                                                 <i data-feather="eye"></i> Review
@@ -123,19 +122,6 @@
                                                 <i data-feather="x"></i> Reject
                                             </button>
                                         </div>
-                                        {% elif transfer.status == 'qc_pending_sync' %}
-                                        <div class="d-flex align-items-center">
-                                            <div class="spinner-border spinner-border-sm text-warning me-2" role="status">
-                                                <span class="visually-hidden">Processing...</span>
-                                            </div>
-                                            <span class="badge bg-warning text-dark">In Progress</span>
-                                            <a href="{{ url_for('inventory_transfer.serial_detail', transfer_id=transfer.id) }}" class="btn btn-sm btn-outline-primary ms-2">
-                                                <i data-feather="eye"></i> View
-                                            </a>
-                                        </div>
-                                        {% else %}
-                                        <span class="badge bg-secondary">{{ transfer.status|title }}</span>
-                                        {% endif %}
                                     </td>
                                 </tr>
                                 {% endfor %}
@@ -222,7 +208,6 @@
                                         <small>{{ transfer.created_at.strftime('%Y-%m-%d %H:%M') }}</small>
                                     </td>
                                     <td>
-                                        {% if transfer.status == 'submitted' %}
                                         <div class="btn-group" role="group">
                                             <a href="{{ url_for('serial_item_transfer.detail', transfer_id=transfer.id) }}" class="btn btn-sm btn-outline-primary">
                                                 <i data-feather="eye"></i> Review
@@ -234,19 +219,6 @@
                                                 <i data-feather="x"></i> Reject
                                             </button>
                                         </div>
-                                        {% elif transfer.status == 'qc_pending_sync' %}
-                                        <div class="d-flex align-items-center">
-                                            <div class="spinner-border spinner-border-sm text-warning me-2" role="status">
-                                                <span class="visually-hidden">Processing...</span>
-                                            </div>
-                                            <span class="badge bg-warning text-dark">In Progress</span>
-                                            <a href="{{ url_for('serial_item_transfer.detail', transfer_id=transfer.id) }}" class="btn btn-sm btn-outline-primary ms-2">
-                                                <i data-feather="eye"></i> View
-                                            </a>
-                                        </div>
-                                        {% else %}
-                                        <span class="badge bg-secondary">{{ transfer.status|title }}</span>
-                                        {% endif %}
                                     </td>
                                 </tr>
                                 {% endfor %}
@@ -263,112 +235,6 @@
             </div>
         </div>
     </div>
-
-    <!-- Pending GRPO Approvals -->
-<!--    <div class="row mt-4">-->
-<!--        <div class="col-12">-->
-<!--            <div class="card">-->
-<!--                <div class="card-header">-->
-<!--                    <div class="d-flex justify-content-between align-items-center">-->
-<!--                        <h5 class="mb-0">-->
-<!--                            <i data-feather="package"></i>-->
-<!--                            Pending GRPO Approvals-->
-<!--                        </h5>-->
-<!--                        <div>-->
-<!--                            <button class="btn btn-outline-secondary btn-sm" onclick="refreshData()">-->
-<!--                                <i data-feather="refresh-cw"></i> Refresh-->
-<!--                            </button>-->
-<!--                        </div>-->
-<!--                    </div>-->
-<!--                </div>-->
-<!--                <div class="card-body">-->
-<!--                    {% if pending_grpos %}-->
-<!--                    <div class="table-responsive">-->
-<!--                        <table class="table table-hover table-striped">-->
-<!--                            <thead class="table-dark">-->
-<!--                                <tr>-->
-<!--                                    <th>PO Number</th>-->
-<!--                                    <th>Supplier</th>-->
-<!--                                    <th>Created By</th>-->
-<!--                                    <th>Items Count</th>-->
-<!--                                    <th>PO Total</th>-->
-<!--                                    <th>Submitted</th>-->
-<!--                                    <th>Actions</th>-->
-<!--                                </tr>-->
-<!--                            </thead>-->
-<!--                            <tbody>-->
-<!--                                {% for grpo in pending_grpos %}-->
-<!--                                <tr>-->
-<!--                                    <td><strong>{{ grpo.po_number }}</strong></td>-->
-<!--                                    <td>-->
-<!--                                        <div>-->
-<!--                                            {% if grpo.supplier_name %}-->
-<!--                                                <strong>{{ grpo.supplier_name }}</strong><br>-->
-<!--                                                <small class="text-muted">{{ grpo.supplier_code }}</small>-->
-<!--                                            {% else %}-->
-<!--                                                <span class="text-muted">{{ grpo.supplier_code or 'N/A' }}</span>-->
-<!--                                            {% endif %}-->
-<!--                                        </div>-->
-<!--                                    </td>-->
-<!--                                    <td>-->
-<!--                                        <div>-->
-<!--                                            <strong>{{ grpo.user.first_name }} {{ grpo.user.last_name }}</strong><br>-->
-<!--                                            <small class="text-muted">{{ grpo.user.username }}</small>-->
-<!--                                        </div>-->
-<!--                                    </td>-->
-<!--                                    <td>-->
-<!--                                        <span class="badge bg-info">{{ grpo.items|length }} items</span>-->
-<!--                                    </td>-->
-<!--                                    <td>-->
-<!--                                        {% if grpo.po_total %}-->
-<!--                                            <strong>${{ "%.2f"|format(grpo.po_total) }}</strong>-->
-<!--                                        {% else %}-->
-<!--                                            <span class="text-muted">N/A</span>-->
-<!--                                        {% endif %}-->
-<!--                                    </td>-->
-<!--                                    <td>-->
-<!--                                        <small>{{ grpo.created_at.strftime('%Y-%m-%d %H:%M') }}</small>-->
-<!--                                    </td>-->
-<!--                                    <td>-->
-<!--                                        {% if grpo.status == 'submitted' %}-->
-<!--                                        <div class="btn-group" role="group">-->
-<!--                                            <a href="{{ url_for('grpo.detail', grpo_id=grpo.id) }}" class="btn btn-sm btn-outline-primary">-->
-<!--                                                <i data-feather="eye"></i> Review-->
-<!--                                            </a>-->
-<!--                                            <button class="btn btn-sm btn-success" id="approve-grpo-{{ grpo.id }}" onclick="showApprovalModal({{ grpo.id }}, '{{ grpo.po_number }}')">-->
-<!--                                                <i data-feather="check"></i> Approve-->
-<!--                                            </button>-->
-<!--                                            <button class="btn btn-sm btn-danger" onclick="showRejectionModal({{ grpo.id }}, '{{ grpo.po_number }}')">-->
-<!--                                                <i data-feather="x"></i> Reject-->
-<!--                                            </button>-->
-<!--                                        </div>-->
-<!--                                        {% elif grpo.status == 'qc_pending_sync' %}-->
-<!--                                        <div class="d-flex align-items-center">-->
-<!--                                            <div class="spinner-border spinner-border-sm text-warning me-2" role="status">-->
-<!--                                                <span class="visually-hidden">Processing...</span>-->
-<!--                                            </div>-->
-<!--                                            <span class="badge bg-warning">In Progress</span>-->
-<!--                                        </div>-->
-<!--                                        {% else %}-->
-<!--                                        <span class="badge bg-secondary">{{ grpo.status|title }}</span>-->
-<!--                                        {% endif %}-->
-<!--                                    </td>-->
-<!--                                </tr>-->
-<!--                                {% endfor %}-->
-<!--                            </tbody>-->
-<!--                        </table>-->
-<!--                    </div>-->
-<!--                    {% else %}-->
-<!--                    <div class="alert alert-info">-->
-<!--                        <i data-feather="info"></i>-->
-<!--                        No pending GRPO documents for approval at this time.-->
-<!--                    </div>-->
-<!--                    {% endif %}-->
-<!--                </div>-->
-<!--            </div>-->
-<!--        </div>-->
-<!--    </div>-->
-
 </div>
 
 <!-- Approval Modal -->
@@ -502,11 +368,9 @@ function submitApproval() {
     .then(data => {
         if (data.success) {
             showAlert(`Success: ${data.message}`, 'success');
-            // Close modal
+            // Close modal and refresh page
             bootstrap.Modal.getInstance(document.getElementById('approvalModal')).hide();
-            
-            // Update the entire row to show "In Progress" status
-            updateRowToInProgress(currentApprovalAction, data);
+            setTimeout(() => location.reload(), 1000);
         } else {
             showAlert(`Error: ${data.error}`, 'error');
             // Reset button
@@ -555,7 +419,7 @@ function submitRejection() {
     .then(data => {
         if (data.success) {
             showAlert(`Success: ${data.message}`, 'success');
-            // Close modal and refresh page for rejections (rejections are final)
+            // Close modal and refresh page
             bootstrap.Modal.getInstance(document.getElementById('rejectionModal')).hide();
             setTimeout(() => location.reload(), 1000);
         } else {
@@ -580,7 +444,7 @@ function submitRejection() {
 function showSerialItemTransferApprovalModal(transferId, transferNumber) {
     // Reuse the existing approval modal but update the action and text
     document.getElementById('approvalPONumber').textContent = transferNumber;
-    currentApprovalAction = `/serial-item-transfer/${transferId}/approve`;
+    currentApprovalAction = `/serial_item_transfer/${transferId}/qc_approve`;
 
     // Update modal title for Serial Item Transfer
     document.querySelector('#approvalModal .modal-title').textContent = 'Approve Serial Item Transfer';
@@ -608,7 +472,7 @@ function showSerialItemTransferApprovalModal(transferId, transferNumber) {
 function showSerialItemTransferRejectionModal(transferId, transferNumber) {
     // Reuse the existing rejection modal but update the action and text
     document.getElementById('rejectionPONumber').textContent = transferNumber;
-    currentRejectionAction = `/serial-item-transfer/${transferId}/reject`;
+    currentRejectionAction = `/serial_item_transfer/${transferId}/qc_reject`;
 
     // Update modal title for Serial Item Transfer
     document.querySelector('#rejectionModal .modal-title').textContent = 'Reject Serial Item Transfer';
@@ -719,60 +583,6 @@ function refreshData() {
     location.reload();
 }
 
-// Update row to show In Progress status
-function updateRowToInProgress(actionUrl, responseData) {
-    // Extract document ID from the action URL
-    const urlParts = actionUrl.split('/');
-    let documentId, documentType;
-    
-    if (actionUrl.includes('/grpo/')) {
-        documentId = urlParts[urlParts.indexOf('grpo') + 1];
-        documentType = 'grpo';
-    } else if (actionUrl.includes('/serial-item-transfer/')) {
-        documentId = urlParts[urlParts.indexOf('serial-item-transfer') + 1];
-        documentType = 'serial-item-transfer';
-    } else if (actionUrl.includes('/inventory_transfer/')) {
-        documentId = urlParts[urlParts.indexOf('inventory_transfer') + 1];
-        documentType = 'inventory-transfer';
-    }
-    
-    if (!documentId || !documentType) return;
-    
-    // Find the correct approve button based on document ID and type
-    let approveButton;
-    if (documentType === 'grpo') {
-        approveButton = document.getElementById(`approve-grpo-${documentId}`);
-    } else if (documentType === 'serial-item-transfer') {
-        approveButton = document.getElementById(`approve-item-${documentId}`);
-    } else if (documentType === 'inventory-transfer') {
-        approveButton = document.getElementById(`approve-serial-${documentId}`);
-    }
-    
-    if (!approveButton) return;
-    
-    // Find the parent row and update the actions column
-    const row = approveButton.closest('tr');
-    if (!row) return;
-    
-    // Find the actions cell (usually the last td)
-    const actionsCell = row.querySelector('td:last-child');
-    if (!actionsCell) return;
-    
-    // Replace the actions with "In Progress" status
-    actionsCell.innerHTML = `
-        <div class="d-flex align-items-center">
-            <div class="spinner-border spinner-border-sm text-warning me-2" role="status">
-                <span class="visually-hidden">Processing...</span>
-            </div>
-            <span class="badge bg-warning">In Progress</span>
-            ${responseData.job_id ? `<small class="text-muted ms-2">Job #${responseData.job_id}</small>` : ''}
-        </div>
-    `;
-    
-    // Re-initialize feather icons if needed
-    feather.replace();
-}
-
 // Transfer approval functions
 function showTransferApprovalModal(transferId, transferNumber) {
     if (confirm(`Are you sure you want to approve transfer ${transferNumber}? This will post the transfer to SAP B1.`)) {
@@ -853,14 +663,9 @@ function showSerialTransferApprovalModal(transferId, transferNumber) {
         .then(response => response.json())
         .then(data => {
             if (data.success) {
-                // Show success message - transfer is now processing in background
-                showAlert(`✅ Serial Number Transfer approved successfully! Processing in background...\n\n${data.message}\n\nThe transfer will be posted to SAP B1 automatically. You can leave this page - the process will continue in the background.`, 'success');
-                
-                // Reload page after 2 seconds to remove approved item from pending list
-                setTimeout(() => {
-                    location.reload();
-                }, 2000);
-                
+                showAlert(`Serial Number Transfer approved successfully! ${data.message}`, 'success');
+                // Wait for alert to be visible before refresh
+                setTimeout(() => location.reload(), 1500);
             } else {
                 showAlert(`Error approving serial transfer: ${data.error}`, 'error');
                 // If there's a redirect, go to it
@@ -948,87 +753,77 @@ function showSerialTransferRejectionModal(transferId, transferNumber) {
 // Serial Item Transfer approval functions
 function showSerialItemTransferApprovalModal(transferId, transferNumber) {
     const approveButton = document.getElementById(`approve-item-${transferId}`);
-    
-    // Prevent double-clicking
-    if (approveButton && approveButton.disabled) return;
-    
-    const originalHTML = approveButton ? approveButton.innerHTML : '';
+    const originalHTML = approveButton.innerHTML;
 
-    if (confirm(`Are you sure you want to approve serial item transfer ${transferNumber}?\n\nThis will queue the transfer for SAP B1 posting in the background.`)) {
-        // Set processing state immediately
-        if (approveButton) {
-            approveButton.disabled = true;
-            approveButton.innerHTML = '<i data-feather="loader" class="spin"></i> Processing...';
-            feather.replace();
-        }
+    const shouldPostToSap = confirm(`Serial Item Transfer ${transferNumber}\n\nPost to SAP B1 after approval?\n\nOK = Approve & Post to SAP immediately\nCancel = Approve only (manual SAP posting later)`);
+
+    if (confirm(`Are you sure you want to approve serial item transfer ${transferNumber}?`)) {
+        // Set processing state
+        approveButton.disabled = true;
+        approveButton.innerHTML = '<i data-feather="loader" class="spin"></i> Processing...';
+        feather.replace();
 
         // Make AJAX call to approve serial item transfer
         fetch(`/serial-item-transfer/${transferId}/approve`, {
             method: 'POST',
             headers: {
-                'Content-Type': 'application/json',
+                'Content-Type': 'application/x-www-form-urlencoded',
             },
-            body: JSON.stringify({ qc_notes: '' })
+            body: 'qc_notes='
         })
-        .then(response => response.json())
-        .then(data => {
-            if (data.success) {
-                // Update UI to show "In Progress" state
-                const buttonContainer = approveButton.closest('td');
-                if (buttonContainer) {
-                    buttonContainer.innerHTML = `
-                        <div class="d-flex align-items-center">
-                            <div class="spinner-border spinner-border-sm text-warning me-2" role="status">
-                                <span class="visually-hidden">Processing...</span>
-                            </div>
-                            <span class="badge bg-warning">In Progress</span>
-                        </div>
-                    `;
+        .then(response => {
+            if (response.redirected) {
+                // Check if we should post to SAP after approval
+                if (shouldPostToSap) {
+                    // Post to SAP B1 after successful approval
+                    fetch(`/serial-item-transfer/${transferId}/post_to_sap`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        }
+                    })
+                    .then(sapResponse => sapResponse.json())
+                    .then(sapData => {
+                        if (sapData.success) {
+                            alert(`✅ Serial Item Transfer approved and posted to SAP B1!\n\nSAP Document Number: ${sapData.sap_document_number}`);
+                        } else {
+                            alert(`⚠️ Transfer approved but SAP posting failed: ${sapData.error}\n\nPlease post manually from the transfer detail page.`);
+                        }
+                        window.location.href = response.url;
+                    })
+                    .catch(sapError => {
+                        console.error('SAP posting error:', sapError);
+                        alert('⚠️ Transfer approved but SAP posting failed.\n\nPlease post manually from the transfer detail page.');
+                        window.location.href = response.url;
+                    });
+                } else {
+                    window.location.href = response.url;
                 }
-                
-                showAlert(`✅ Serial Item Transfer approved successfully!\n\n${data.message}\n\nStatus: ${data.status}\nJob ID: ${data.job_id || 'N/A'}`, 'success');
-                
-                // Note: Do NOT reload the page - this would interrupt the SAP posting process
-                // The status will update automatically when the background job completes
-                
             } else {
-                showAlert(`❌ Error approving serial item transfer: ${data.error}`, 'error');
-                // Restore button state on error
-                if (approveButton) {
-                    approveButton.disabled = false;
-                    approveButton.innerHTML = originalHTML;
-                    feather.replace();
-                }
+                return response.text();
             }
         })
         .catch(error => {
-            console.error('Approval error:', error);
-            showAlert('❌ Network error approving transfer. Please try again.', 'error');
+            console.error('Error:', error);
+            alert('Error approving serial item transfer');
             // Restore button state on error
-            if (approveButton) {
-                approveButton.disabled = false;
-                approveButton.innerHTML = originalHTML;
-                feather.replace();
-            }
+            approveButton.disabled = false;
+            approveButton.innerHTML = originalHTML;
+            feather.replace();
         });
+    } else {
+        // User cancelled, restore button state
+        approveButton.disabled = false;
+        approveButton.innerHTML = originalHTML;
+        feather.replace();
     }
 }
 
 function showSerialItemTransferRejectionModal(transferId, transferNumber) {
     const reason = prompt(`Please enter the reason for rejecting serial item transfer ${transferNumber}:`);
     if (reason && reason.trim()) {
-        // Find the reject button and show processing state
-        const rejectButton = document.querySelector(`button[onclick*="${transferId}"][onclick*="Rejection"]`);
-        let originalHTML = '';
-        if (rejectButton) {
-            originalHTML = rejectButton.innerHTML;
-            rejectButton.disabled = true;
-            rejectButton.innerHTML = '<i data-feather="loader" class="spin"></i> Rejecting...';
-            feather.replace();
-        }
-
         // Make AJAX call to reject serial item transfer
-        fetch(`/serial-item-transfer/${transferId}/reject`, {
+        fetch(`/serial_item_transfer/${transferId}/reject`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/x-www-form-urlencoded',
@@ -1036,36 +831,15 @@ function showSerialItemTransferRejectionModal(transferId, transferNumber) {
             body: `qc_notes=${encodeURIComponent(reason.trim())}`
         })
         .then(response => {
-            // Check if request was successful
-            if (response.ok) {
-                // Show success message and refresh the page
-                showAlert(`✅ Serial Item Transfer ${transferNumber} rejected successfully!`, 'warning');
-                
-                // Remove the transfer row or update its status
-                const transferRow = document.querySelector(`button[onclick*="${transferId}"]`)?.closest('tr');
-                if (transferRow) {
-                    transferRow.style.opacity = '0.5';
-                    transferRow.querySelector('.btn-group').innerHTML = '<span class="badge bg-danger">Rejected</span>';
-                }
-                
-                // Refresh the page after a short delay to show updated status
-                setTimeout(() => {
-                    window.location.reload();
-                }, 1500);
+            if (response.redirected) {
+                window.location.href = response.url;
             } else {
-                throw new Error(`HTTP error! status: ${response.status}`);
+                return response.text();
             }
         })
         .catch(error => {
-            console.error('Error rejecting serial item transfer:', error);
-            showAlert('❌ Error rejecting serial item transfer. Please try again.', 'error');
-            
-            // Restore button state on error
-            if (rejectButton) {
-                rejectButton.disabled = false;
-                rejectButton.innerHTML = originalHTML;
-                feather.replace();
-            }
+            console.error('Error:', error);
+            alert('Error rejecting serial item transfer');
         });
     }
 }
